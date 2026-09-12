@@ -1,14 +1,19 @@
 import { Router } from "express";
-import { movies, shows } from "../catalog.js";
+import { prisma } from "../db.js";
 
 export const moviesRouter = Router();
 
-moviesRouter.get("/", (_request, response) => {
+moviesRouter.get("/", async (_request, response) => {
+  const movies = await prisma.movie.findMany({
+    orderBy: [{ title: "asc" }, { id: "asc" }],
+  });
   response.status(200).json({ movies });
 });
 
-moviesRouter.get("/:movieId", (request, response) => {
-  const movie = movies.find((movie) => movie.id === request.params.movieId);
+moviesRouter.get("/:movieId", async (request, response) => {
+  const movie = await prisma.movie.findUnique({
+    where: { id: request.params.movieId },
+  });
 
   if (!movie) {
     response.status(404).json({
@@ -20,8 +25,13 @@ moviesRouter.get("/:movieId", (request, response) => {
   response.status(200).json({ movie });
 });
 
-moviesRouter.get("/:movieId/shows", (request, response) => {
-  const movie = movies.find((movie) => movie.id === request.params.movieId);
+moviesRouter.get("/:movieId/shows", async (request, response) => {
+  const movie = await prisma.movie.findUnique({
+    where: { id: request.params.movieId },
+    select: {
+      shows: { orderBy: [{ startsAt: "asc" }, { id: "asc" }] },
+    },
+  });
 
   if (!movie) {
     response.status(404).json({
@@ -30,6 +40,5 @@ moviesRouter.get("/:movieId/shows", (request, response) => {
     return;
   }
 
-  const movieShows = shows.filter((show) => show.movieId === movie.id);
-  response.status(200).json({ shows: movieShows });
+  response.status(200).json({ shows: movie.shows });
 });

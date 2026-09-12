@@ -2,6 +2,7 @@ node_modules/
 dist/
 .next/
 next-env.d.ts
+apps/api/src/generated/
 *.tsbuildinfo
 *.log
 .env

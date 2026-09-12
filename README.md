@@ -6,99 +6,120 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 3: Next.js movie pages connected to the API.**
+**Phase 4: a persistent movie catalogue with PostgreSQL and Prisma.**
 
-Customers can browse the three fictional movies and open a movie to see its synopsis, showtimes, and ticket prices. The website handles missing pages, movies without shows, and failed API requests. All listings are fixed demonstration data. Booking, accounts, persistent data, and the waiting room will arrive in later phases.
+The existing API and Next.js pages now read movie and showtime records from PostgreSQL. Migrations define the database structure, and a repeatable seed command adds fictional demo data. Database edits survive API and database restarts. Accounts, reservations, and the waiting room will arrive in later phases.
 
-Start with the [Phase 3 learning guide](docs/phase-03-nextjs-pages.md). Earlier guides cover the [API foundation](docs/phase-01-api-foundation.md) and [movie catalogue](docs/phase-02-movie-catalogue.md).
+Start with the [Phase 4 learning guide](docs/phase-04-postgresql-catalogue.md). Earlier guides describe the [API foundation](docs/phase-01-api-foundation.md), [in-memory catalogue](docs/phase-02-movie-catalogue.md), and [Next.js pages](docs/phase-03-nextjs-pages.md). Those guides document their original phases; use the current setup below.
 
-## Run locally
+## First-time setup
 
-Requirements: Node.js 22.12 or newer and npm. From the repository root, install the workspace dependencies once:
+Requirements: Node.js 22.12 or newer, npm, and Docker Desktop running Linux containers. Run these commands from the repository root:
 
 ```sh
 npm install
 ```
 
-Use two terminals, both in the repository root:
+Create the API environment file once. In PowerShell:
+
+```powershell
+Copy-Item apps/api/.env.example apps/api/.env
+```
+
+Keep an existing `.env` if you have already configured it. The example matches the local database in `compose.yaml`: database `fairgate`, user `fairgate`, password `fairgate_dev`, and host port `5433`. These are development credentials; the port is bound to this computer's loopback interface.
 
 ```sh
-# Terminal 1: Express API at http://127.0.0.1:4000
+npm run db:start
+npm run db:generate
+npm run db:deploy
+npm run db:seed
+```
+
+`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo rows without changing existing ones. Neither command is a database reset.
+
+## Everyday development
+
+Start Docker Desktop and run `npm run db:start` if the database is stopped. Then use two terminals in the repository root:
+
+```sh
+# Terminal 1: API at http://127.0.0.1:4000
 npm run dev:api
 ```
 
 ```sh
-# Terminal 2: Next.js website at http://127.0.0.1:3000
+# Terminal 2: website at http://127.0.0.1:3000
 npm run dev:web
 ```
 
-Open `http://127.0.0.1:3000`. The API must be running to display listings. Click **View showtimes** on a movie to open its detail page. `after-the-rain` demonstrates a movie with no shows.
+Open `http://127.0.0.1:3000`. Both the API and database must be available to display listings. The movies are sorted by title, and each movie's shows are sorted by start time.
 
-The web server uses `http://127.0.0.1:4000` by default. To use a different API address, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart the web server. This environment variable is read on the server and does not need a `NEXT_PUBLIC_` prefix.
+Run `npm run db:studio` to inspect and edit local records in Prisma Studio. Reload the webpage after editing data. Fixture edits in `prisma/seed-data.ts` no longer change the running catalogue automatically.
+
+The web server uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart the web server.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev:api` | Start the API and reload TypeScript changes. |
-| `npm run dev:web` | Start the Next.js development server. |
+| `npm run dev:api` / `npm run dev:web` | Run the API / website in development. |
 | `npm run dev` | Existing shortcut for the API only. |
-| `npm run typecheck` | Generate Next.js route types and type check both workspaces. |
-| `npm run build` | Compile the API and build the website for production. |
-| `npm run start:api` | Start the compiled API after building. |
-| `npm run start:web` | Start the production website after building. |
+| `npm run typecheck` | Generate required types and check both workspaces. |
+| `npm run build` | Generate Prisma Client, compile the API, and build the website. |
+| `npm run start:api` / `npm run start:web` | Run the compiled apps, each in its own terminal. |
 | `npm start` | Existing shortcut for the compiled API only. |
+| `npm run db:start` | Start PostgreSQL and wait for its health check. |
+| `npm run db:stop` | Stop PostgreSQL while retaining its data. |
+| `npm run db:generate` | Generate the typed Prisma Client from the schema. |
+| `npm run db:deploy` | Apply migrations already present in Git. |
+| `npm run db:migrate -- --name change_name` | Create and apply a migration after changing the schema locally. |
+| `npm run db:seed` | Insert missing demo movies and shows. |
+| `npm run db:studio` | Open a database editor for the local catalogue. |
 
-Stop both development servers with `Ctrl+C` before running the production servers, which use the same ports. Use two terminals for production too. The build does not need a live API; the movie pages fetch when requested.
+Stop development servers with `Ctrl+C` before starting production servers on the same ports. Generation and building need the API environment file but do not need a running database. Reading or editing records does.
+
+PostgreSQL stores its files in the `fairgate_postgres_data` Docker volume. Stopping the container retains the data. Removing that volume deletes the database; it is not part of the normal workflow.
 
 ## API routes
 
-All paths below use `http://127.0.0.1:4000` as the base URL.
+The base URL is `http://127.0.0.1:4000`.
 
 | Method and path | Response |
 | --- | --- |
-| `GET /health` | `200` with API process status. |
+| `GET /health` | `200` when the API process can answer; does not query the database. |
 | `GET /movies` | `200` with `{ "movies": [...] }`. |
 | `GET /movies/:movieId` | `200` with `{ "movie": {...} }`, or `404` for a missing movie. |
 | `GET /movies/:movieId/shows` | `200` with `{ "shows": [...] }`, or `404` for a missing movie. |
 
-An existing movie without shows returns `200` with `{ "shows": [] }`. Missing movies return `{ "error": { "code": "MOVIE_NOT_FOUND", "message": "Movie not found." } }`.
-
-The health response checks that the API process can answer a request. It does not check a database, queue, or payment provider.
+An existing movie without shows returns `200` with `{ "shows": [] }`. Missing movies still use error code `MOVIE_NOT_FOUND`. Failed database queries return `500` with code `INTERNAL_SERVER_ERROR` and a generic message. A running API with an unavailable database can therefore have a healthy `/health` response while catalogue requests fail.
 
 ## Repository layout
 
 ```text
+compose.yaml                Local PostgreSQL service and persistent volume
 apps/
-  api/                      Express API (Phases 1 and 2)
-  web/
+  api/
+    .env.example            Local database connection settings
+    prisma.config.ts        Prisma CLI paths, environment, and seed command
+    tsconfig.check.json     Type checking for API source, seeds, and CLI config
+    prisma/
+      schema.prisma         Movie and Show models
+      migrations/           Checked-in SQL history
+      seed-data.ts          Demo data moved from src/catalog.ts
+      seed.ts               Repeatable demo inserts
     src/
-      app/
-        layout.tsx          Shared header, footer, and metadata
-        page.tsx            Movie catalogue at /
-        movies/[movieId]/
-          page.tsx          One movie and its showtimes
-        error.tsx           Failed-page message and retry button
-        not-found.tsx       Missing-page message
-        globals.css         Responsive styles
-      lib/api.ts            Server-side HTTP calls and response types
-    .env.example            Optional API address setting
-    AGENTS.md               Next.js guidance for coding assistants
-    CLAUDE.md               Reference to that guidance
-    package.json            Web dependencies and commands
-    tsconfig.json           Web compiler settings
-docs/
-  phase-01-api-foundation.md
-  phase-02-movie-catalogue.md
-  phase-03-nextjs-pages.md
-AGENTS.md                   Agreement for phase-by-phase work
+      db.ts                 Shared Prisma client and PostgreSQL adapter
+      app.ts                Route registration and error handling
+      routes/movies.ts      Database-backed catalogue queries
+      server.ts             Server startup
+      generated/            Prisma output (ignored by Git)
+  web/                      Next.js movie pages from Phase 3
+docs/                       One learning guide per phase
+AGENTS.md                   Phase and commit agreement
 package.json                Root commands and npm workspaces
 package-lock.json           Exact installed dependency versions
 ```
 
-Next.js generates `next-env.d.ts` and `.next/` files when its commands run; they are ignored by Git. Both apps use the root lockfile.
-
-On its first development run here, Next.js also generated `apps/web/AGENTS.md` and `CLAUDE.md`. These are coding-assistant instructions to consult the installed version's documentation, not application code. The root `AGENTS.md` still governs our learning phases and commit workflow.
+Prisma's generated client, Next.js output, compiled API files, and local `.env` files are ignored. Commit the schema, migrations, seed scripts, package changes, and guides. Next.js's existing `apps/web/AGENTS.md` and `CLAUDE.md` point coding assistants to its installed documentation; the root learning agreement still applies.
 
 ## Learning workflow
 

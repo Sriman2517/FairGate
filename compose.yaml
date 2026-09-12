@@ -1,0 +1,21 @@
+name: fairgate
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fairgate
+      POSTGRES_PASSWORD: fairgate_dev
+      POSTGRES_DB: fairgate
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fairgate -d fairgate"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres_data:

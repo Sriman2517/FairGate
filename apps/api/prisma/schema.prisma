@@ -1,0 +1,36 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Currency {
+  INR
+}
+
+model Movie {
+  id              String @id
+  title           String
+  synopsis        String
+  language        String
+  durationMinutes Int
+  shows           Show[]
+}
+
+model Show {
+  id           String   @id
+  movieId      String
+  cinemaName   String
+  screenName   String
+  startsAt     DateTime @db.Timestamptz(3)
+  priceInPaise Int
+  currency     Currency @default(INR)
+  movie        Movie    @relation(fields: [movieId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([movieId, startsAt])
+}

@@ -5,16 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc",
-    "start": "node dist/server.js"
+    "typecheck": "prisma generate && tsc --project tsconfig.check.json",
+    "build": "prisma generate && tsc",
+    "start": "node dist/server.js",
+    "db:generate": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "dotenv": "^17.2.0",
     "express": "^5.1.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
+    "prisma": "7.10.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

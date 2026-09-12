@@ -17,6 +17,13 @@
     "build": "npm run build --workspaces",
     "start": "npm run start:api",
     "start:api": "npm run start --workspace @fairgate/api",
-    "start:web": "npm run start --workspace @fairgate/web"
+    "start:web": "npm run start --workspace @fairgate/web",
+    "db:start": "docker compose up -d --wait",
+    "db:stop": "docker compose stop",
+    "db:generate": "npm run db:generate --workspace @fairgate/api",
+    "db:deploy": "npm run db:deploy --workspace @fairgate/api",
+    "db:migrate": "npm run db:migrate --workspace @fairgate/api --",
+    "db:seed": "npm run db:seed --workspace @fairgate/api",
+    "db:studio": "npm run db:studio --workspace @fairgate/api"
   }
 }
