@@ -6,25 +6,50 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 2: a movie and showtime API.**
+**Phase 3: Next.js movie pages connected to the API.**
 
-The API serves three fictional movies and their showtimes from in-memory data. You can list movies, open one movie, and list its shows. These are fixed demo listings, not live availability or reservations. The customer pages, database, authentication, and waiting room will arrive in later phases.
+Customers can browse the three fictional movies and open a movie to see its synopsis, showtimes, and ticket prices. The website handles missing pages, movies without shows, and failed API requests. All listings are fixed demonstration data. Booking, accounts, persistent data, and the waiting room will arrive in later phases.
 
-Read the [Phase 2 learning guide](docs/phase-02-movie-catalogue.md) for the code walkthrough and exercise. The [Phase 1 guide](docs/phase-01-api-foundation.md) covers the original API setup.
+Start with the [Phase 3 learning guide](docs/phase-03-nextjs-pages.md). Earlier guides cover the [API foundation](docs/phase-01-api-foundation.md) and [movie catalogue](docs/phase-02-movie-catalogue.md).
 
-## Requirements
+## Run locally
 
-- Node.js 22.12 or newer
-- npm, which is included with Node.js
-
-Run the following commands from the repository root:
+Requirements: Node.js 22.12 or newer and npm. From the repository root, install the workspace dependencies once:
 
 ```sh
 npm install
-npm run dev
 ```
 
-Open `http://127.0.0.1:4000/movies` in your browser to see the catalogue. There is no frontend yet; these URLs return JSON.
+Use two terminals, both in the repository root:
+
+```sh
+# Terminal 1: Express API at http://127.0.0.1:4000
+npm run dev:api
+```
+
+```sh
+# Terminal 2: Next.js website at http://127.0.0.1:3000
+npm run dev:web
+```
+
+Open `http://127.0.0.1:3000`. The API must be running to display listings. Click **View showtimes** on a movie to open its detail page. `after-the-rain` demonstrates a movie with no shows.
+
+The web server uses `http://127.0.0.1:4000` by default. To use a different API address, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart the web server. This environment variable is read on the server and does not need a `NEXT_PUBLIC_` prefix.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev:api` | Start the API and reload TypeScript changes. |
+| `npm run dev:web` | Start the Next.js development server. |
+| `npm run dev` | Existing shortcut for the API only. |
+| `npm run typecheck` | Generate Next.js route types and type check both workspaces. |
+| `npm run build` | Compile the API and build the website for production. |
+| `npm run start:api` | Start the compiled API after building. |
+| `npm run start:web` | Start the production website after building. |
+| `npm start` | Existing shortcut for the compiled API only. |
+
+Stop both development servers with `Ctrl+C` before running the production servers, which use the same ports. Use two terminals for production too. The build does not need a live API; the movie pages fetch when requested.
 
 ## API routes
 
@@ -34,55 +59,46 @@ All paths below use `http://127.0.0.1:4000` as the base URL.
 | --- | --- |
 | `GET /health` | `200` with API process status. |
 | `GET /movies` | `200` with `{ "movies": [...] }`. |
-| `GET /movies/:movieId` | `200` with `{ "movie": {...} }`, or `404` if the movie does not exist. |
-| `GET /movies/:movieId/shows` | `200` with `{ "shows": [...] }`, or `404` if the movie does not exist. |
+| `GET /movies/:movieId` | `200` with `{ "movie": {...} }`, or `404` for a missing movie. |
+| `GET /movies/:movieId/shows` | `200` with `{ "shows": [...] }`, or `404` for a missing movie. |
 
-Replace `:movieId` with an actual ID, such as `the-last-signal`. `after-the-rain` exists but has no shows, so its shows response is `200` with `{ "shows": [] }`.
+An existing movie without shows returns `200` with `{ "shows": [] }`. Missing movies return `{ "error": { "code": "MOVIE_NOT_FOUND", "message": "Movie not found." } }`.
 
-An unknown movie ID returns:
-
-```json
-{
-  "error": {
-    "code": "MOVIE_NOT_FOUND",
-    "message": "Movie not found."
-  }
-}
-```
-
-The health response only confirms that the API process can answer a request. It does not check a database, queue, or payment provider.
-
-## Commands
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Run the API from TypeScript and restart it after source changes. |
-| `npm run typecheck` | Check TypeScript without generating JavaScript files. |
-| `npm run build` | Compile the API into `apps/api/dist`. |
-| `npm start` | Run the compiled API after a successful build. |
-
-Stop the development server with `Ctrl+C` before using `npm start`, since both use port 4000.
+The health response checks that the API process can answer a request. It does not check a database, queue, or payment provider.
 
 ## Repository layout
 
 ```text
 apps/
-  api/
+  api/                      Express API (Phases 1 and 2)
+  web/
     src/
-      app.ts          App setup, health route, and movie router registration
-      catalog.ts      Movie/show types and fictional data
-      routes/
-        movies.ts     Movie list, detail, and showtime routes
-      server.ts       Server startup
-    package.json      API commands and dependencies
-    tsconfig.json     TypeScript compiler settings
+      app/
+        layout.tsx          Shared header, footer, and metadata
+        page.tsx            Movie catalogue at /
+        movies/[movieId]/
+          page.tsx          One movie and its showtimes
+        error.tsx           Failed-page message and retry button
+        not-found.tsx       Missing-page message
+        globals.css         Responsive styles
+      lib/api.ts            Server-side HTTP calls and response types
+    .env.example            Optional API address setting
+    AGENTS.md               Next.js guidance for coding assistants
+    CLAUDE.md               Reference to that guidance
+    package.json            Web dependencies and commands
+    tsconfig.json           Web compiler settings
 docs/
   phase-01-api-foundation.md
   phase-02-movie-catalogue.md
-AGENTS.md             Agreement for phase-by-phase work
-package.json          Root commands and npm workspace
-package-lock.json     Exact dependency versions generated by npm
+  phase-03-nextjs-pages.md
+AGENTS.md                   Agreement for phase-by-phase work
+package.json                Root commands and npm workspaces
+package-lock.json           Exact installed dependency versions
 ```
+
+Next.js generates `next-env.d.ts` and `.next/` files when its commands run; they are ignored by Git. Both apps use the root lockfile.
+
+On its first development run here, Next.js also generated `apps/web/AGENTS.md` and `CLAUDE.md`. These are coding-assistant instructions to consult the installed version's documentation, not application code. The root `AGENTS.md` still governs our learning phases and commit workflow.
 
 ## Learning workflow
 

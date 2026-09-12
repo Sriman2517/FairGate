@@ -3,15 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "apps/api"
+    "apps/api",
+    "apps/web"
   ],
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "npm run dev --workspace @fairgate/api",
-    "typecheck": "npm run typecheck --workspace @fairgate/api",
-    "build": "npm run build --workspace @fairgate/api",
-    "start": "npm run start --workspace @fairgate/api"
+    "dev": "npm run dev:api",
+    "dev:api": "npm run dev --workspace @fairgate/api",
+    "dev:web": "npm run dev --workspace @fairgate/web",
+    "typecheck": "npm run typecheck --workspaces",
+    "build": "npm run build --workspaces",
+    "start": "npm run start:api",
+    "start:api": "npm run start --workspace @fairgate/api",
+    "start:web": "npm run start --workspace @fairgate/web"
   }
 }
