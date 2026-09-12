@@ -1,4 +1,5 @@
 import express from "express";
+import { moviesRouter } from "./routes/movies.js";
 
 export const app = express();
 
@@ -8,3 +9,5 @@ app.get("/health", (_request, response) => {
     service: "fairgate-api",
   });
 });
+
+app.use("/movies", moviesRouter);
