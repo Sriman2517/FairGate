@@ -6,27 +6,31 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 4: a persistent movie catalogue with PostgreSQL and Prisma.**
+**Phase 6: safe single-seat demo bookings.**
 
-The existing API and Next.js pages now read movie and showtime records from PostgreSQL. Migrations define the database structure, and a repeatable seed command adds fictional demo data. Database edits survive API and database restarts. Accounts, reservations, and the waiting room will arrive in later phases.
+Customers can open a show's seat map, choose one available seat, and confirm a demo booking. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 4 learning guide](docs/phase-04-postgresql-catalogue.md). Earlier guides describe the [API foundation](docs/phase-01-api-foundation.md), [in-memory catalogue](docs/phase-02-movie-catalogue.md), and [Next.js pages](docs/phase-03-nextjs-pages.md). Those guides document their original phases; use the current setup below.
+Start with the [Phase 6 learning guide](docs/phase-06-safe-seat-booking.md). Earlier guides cover [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+
+Bookings confirm immediately and collect no payment. Multi-seat bookings, temporary holds, cancellation, and waiting-room admission are outside this phase.
 
 ## First-time setup
 
-Requirements: Node.js 22.12 or newer, npm, and Docker Desktop running Linux containers. Run these commands from the repository root:
+Requirements: Node.js 22.12 or newer, npm, and Docker Desktop running Linux containers. From the repository root:
+
+Argon2 is pinned to `0.44.0`, whose Windows binary was verified on Node.js 22.12.0. The newer `0.45.1` binary failed to load on this development setup.
 
 ```sh
 npm install
 ```
 
-Create the API environment file once. In PowerShell:
+Create the API environment file once, keeping an existing file if already configured:
 
 ```powershell
 Copy-Item apps/api/.env.example apps/api/.env
 ```
 
-Keep an existing `.env` if you have already configured it. The example matches the local database in `compose.yaml`: database `fairgate`, user `fairgate`, password `fairgate_dev`, and host port `5433`. These are development credentials; the port is bound to this computer's loopback interface.
+The example matches the local database in `compose.yaml`: database `fairgate`, user `fairgate`, password `fairgate_dev`, and host port `5433`. These are development credentials; the port is bound to this computer's loopback interface.
 
 ```sh
 npm run db:start
@@ -35,11 +39,11 @@ npm run db:deploy
 npm run db:seed
 ```
 
-`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo rows without changing existing ones. Neither command is a database reset.
+`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 5, run `db:generate`, `db:deploy`, and `db:seed`, then restart both development servers. Phase 6 adds no dependencies.
 
 ## Everyday development
 
-Start Docker Desktop and run `npm run db:start` if the database is stopped. Then use two terminals in the repository root:
+Start Docker Desktop and run `npm run db:start` if the database is stopped. Use two terminals in the repository root:
 
 ```sh
 # Terminal 1: API at http://127.0.0.1:4000
@@ -51,78 +55,105 @@ npm run dev:api
 npm run dev:web
 ```
 
-Open `http://127.0.0.1:3000`. Both the API and database must be available to display listings. The movies are sorted by title, and each movie's shows are sorted by start time.
+Open `http://127.0.0.1:3000`, choose a film and show, then open its seat map. Sign in or create an account when prompted; you will return to that show. Choose an available seat and confirm its demo booking. The confirmation shows the seat, booking reference, showtime, and amount. Open **My bookings** to find it again. Prices are recorded at booking time; no payment is collected.
 
-Run `npm run db:studio` to inspect and edit local records in Prisma Studio. Reload the webpage after editing data. Fixture edits in `prisma/seed-data.ts` no longer change the running catalogue automatically.
+Accounts use a demo email and a unique passphrase of 15–128 characters. Email is not sent or verified. Next.js keeps the session token in an HttpOnly cookie; the API stores its digest in PostgreSQL and checks its seven-day expiry.
 
-The web server uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart the web server.
+The API and PostgreSQL must be available for catalogue and account requests. The website uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart Next.js.
+
+Use the development commands for local HTTP testing. Production mode sets a `Secure` session cookie and requires HTTPS at the browser. Deployments must also protect the connection to the API. HTTPS hosting and deployment configuration are outside this phase.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `npm run dev:api` / `npm run dev:web` | Run the API / website in development. |
-| `npm run dev` | Existing shortcut for the API only. |
-| `npm run typecheck` | Generate required types and check both workspaces. |
+| `npm run dev` | Shortcut for the API only. |
+| `npm run typecheck` | Generate required types and check both workspaces and the auth tests. |
 | `npm run build` | Generate Prisma Client, compile the API, and build the website. |
-| `npm run start:api` / `npm run start:web` | Run the compiled apps, each in its own terminal. |
-| `npm start` | Existing shortcut for the compiled API only. |
-| `npm run db:start` | Start PostgreSQL and wait for its health check. |
-| `npm run db:stop` | Stop PostgreSQL while retaining its data. |
-| `npm run db:generate` | Generate the typed Prisma Client from the schema. |
+| `npm run test:auth` | Run auth integration tests against local PostgreSQL. |
+| `npm run test:bookings` | Test booking races, retry handling, and ownership using separate API processes. |
+| `npm run start:api` / `npm run start:web` | Run compiled apps in separate terminals; production browser auth requires HTTPS. |
+| `npm start` | Shortcut for the compiled API only. |
+| `npm run db:start` / `npm run db:stop` | Start / stop PostgreSQL while retaining data. |
+| `npm run db:generate` | Generate Prisma Client from the schema. |
 | `npm run db:deploy` | Apply migrations already present in Git. |
 | `npm run db:migrate -- --name change_name` | Create and apply a migration after changing the schema locally. |
-| `npm run db:seed` | Insert missing demo movies and shows. |
-| `npm run db:studio` | Open a database editor for the local catalogue. |
+| `npm run db:seed` | Insert missing demo movies, shows, and seat inventory. |
+| `npm run db:studio` | Inspect local database records in Prisma Studio. |
 
-Stop development servers with `Ctrl+C` before starting production servers on the same ports. Generation and building need the API environment file but do not need a running database. Reading or editing records does.
+Auth tests require the local database at `127.0.0.1:5433/fairgate` with migrations applied. They start their own API on a free port, create uniquely named synthetic accounts, and remove those accounts and their sessions afterward. They do not need the development servers. They check registration races, validation, login, isolation, expiration, revocation, database constraints, and throttling.
 
-PostgreSQL stores its files in the `fairgate_postgres_data` Docker volume. Stopping the container retains the data. Removing that volume deletes the database; it is not part of the normal workflow.
+Booking tests use that same local-only guard and independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify correctness, not production throughput or queue fairness.
+
+Generation and building require the API environment file but do not query a running database. Runtime requests and integration tests do. Stop an app before starting another on its port. PostgreSQL uses the `fairgate_postgres_data` Docker volume; removing that volume deletes its data and is not part of the normal workflow.
 
 ## API routes
 
-The base URL is `http://127.0.0.1:4000`.
+Base URL: `http://127.0.0.1:4000`. Authentication endpoints use JSON. Send `Authorization: Bearer <token>` to identify a session; the API does not read browser cookies. Next.js handles that translation on the server.
 
 | Method and path | Response |
 | --- | --- |
-| `GET /health` | `200` when the API process can answer; does not query the database. |
+| `GET /health` | `200` when the API process can answer; no database query. |
 | `GET /movies` | `200` with `{ "movies": [...] }`. |
-| `GET /movies/:movieId` | `200` with `{ "movie": {...} }`, or `404` for a missing movie. |
-| `GET /movies/:movieId/shows` | `200` with `{ "shows": [...] }`, or `404` for a missing movie. |
+| `GET /movies/:movieId` | `200` with `{ "movie": {...} }`, or `404`. |
+| `GET /movies/:movieId/shows` | `200` with `{ "shows": [...] }`, or `404`. |
+| `GET /shows/:showId` | `200` with `{ show, seats }`; each seat exposes availability, or `404` for an unknown show. |
+| `POST /auth/register` | Body: `name`, `email`, `password`. `201` with public user and new session. |
+| `POST /auth/login` | Body: `email`, `password`. `200` with public user and new session. |
+| `GET /auth/me` | `200` with public user, or `401` for an invalid session. |
+| `POST /auth/logout` | `204`; revokes the presented session and succeeds if already absent. |
+| `POST /bookings` | Body: `showId`, `seatLabel`, UUID `requestId`. `201 { booking }`, or `200` for a successful retry. |
+| `GET /bookings` | `200 { bookings }` for the signed-in customer. |
+| `GET /bookings/:bookingId` | `200 { booking }` for its owner; `404` for missing or other customers' bookings. |
 
-An existing movie without shows returns `200` with `{ "shows": [] }`. Missing movies still use error code `MOVIE_NOT_FOUND`. Failed database queries return `500` with code `INTERNAL_SERVER_ERROR` and a generic message. A running API with an unavailable database can therefore have a healthy `/health` response while catalogue requests fail.
+A public user contains only `id`, `name`, and `email`. Registration/login return `session.token` and `session.expiresAt` to the Next.js server. Never copy these tokens into screenshots, logs, URLs, or commits. All auth responses use `Cache-Control: no-store`.
+
+Auth errors include `400 INVALID_INPUT`, `400 INVALID_JSON`, `401 INVALID_CREDENTIALS`, `401 UNAUTHENTICATED`, `409 EMAIL_IN_USE`, `413 PAYLOAD_TOO_LARGE`, and `429 TOO_MANY_ATTEMPTS`. Unexpected failures return `500 INTERNAL_SERVER_ERROR` without database details. A healthy `/health` response does not prove PostgreSQL is reachable.
+
+All booking endpoints require a valid session. A taken seat receives `409 SEAT_UNAVAILABLE`; reusing one request ID for a different show/seat receives `409 REQUEST_ID_REUSED`. A new booking for a show that has started receives `409 SHOW_STARTED`; successful retries still return their original booking. Nonexistent inventory receives `404 SEAT_NOT_FOUND`. The server derives the customer and amount rather than trusting request fields. Availability and booking responses use `Cache-Control: no-store`.
+
+## Scope and limits
+
+- A seat map is a snapshot, so another customer can book a displayed seat before you confirm. PostgreSQL's unique constraint decides who succeeds. The page refreshes availability after a conflict.
+- A booking is one database insert with a stored price. Show metadata on its confirmation is read from the current catalogue. Show start time is checked during request handling, not locked to the exact insert commit time.
+- Email is an unverified identifier; email verification, password recovery, and roles are not implemented.
+- Sessions have an absolute seven-day lifetime. Logging out revokes the current session; other sign-ins stay valid. Expired database rows are rejected but are not automatically cleaned up yet.
+- Signup and login share a process-local limit of 60 attempts per backend IP per 15 minutes. Login also allows 10 attempts per normalized email per 15 minutes. Next.js forwards requests from its own IP, so the first limit is a shared demo safeguard. It resets on API restart and is not a distributed or per-visitor limit. Shared storage and trusted proxy configuration belong to a later phase.
+- Incorrect passwords and unknown emails return the same login message. Registration explicitly reports an existing email; this is not an account-enumeration-proof flow.
 
 ## Repository layout
 
 ```text
-compose.yaml                Local PostgreSQL service and persistent volume
-apps/
-  api/
-    .env.example            Local database connection settings
-    prisma.config.ts        Prisma CLI paths, environment, and seed command
-    tsconfig.check.json     Type checking for API source, seeds, and CLI config
-    prisma/
-      schema.prisma         Movie and Show models
-      migrations/           Checked-in SQL history
-      seed-data.ts          Demo data moved from src/catalog.ts
-      seed.ts               Repeatable demo inserts
-    src/
-      db.ts                 Shared Prisma client and PostgreSQL adapter
-      app.ts                Route registration and error handling
-      routes/movies.ts      Database-backed catalogue queries
-      server.ts             Server startup
-      generated/            Prisma output (ignored by Git)
-  web/                      Next.js movie pages from Phase 3
-docs/                       One learning guide per phase
-AGENTS.md                   Phase and commit agreement
-package.json                Root commands and npm workspaces
-package-lock.json           Exact installed dependency versions
+compose.yaml                     Local PostgreSQL service and persistent volume
+apps/api/
+  prisma/schema.prisma           Catalogue, customer, session, seat, and booking models
+  prisma/migrations/             Additive SQL history
+  prisma/seed.ts                 Repeatable catalogue inserts
+  src/app.ts                     Route registration, JSON parser, error handling
+  src/auth/                      Input validation, password hashing, sessions
+  src/routes/auth.ts             Customer account endpoints and attempt limits
+  src/routes/movies.ts           Catalogue endpoints
+  src/routes/shows.ts            Public show details and seat availability
+  src/routes/bookings.ts         Booking creation, retries, and owner-only reads
+  src/bookings.ts                Input validation and public booking response fields
+  src/db.ts                      Prisma client and PostgreSQL adapter
+  tests/auth.test.ts             Integration tests using real local PostgreSQL
+  tests/bookings.test.ts         Booking correctness across independent API processes
+apps/web/src/
+  app/                           Movie, show, booking, login, and account pages
+  app/actions/auth.ts            Server actions and browser cookie changes
+  app/actions/bookings.ts        Booking submission and conflict refresh
+  components/auth-form.tsx       Forms and pending/error feedback
+  lib/auth.ts                    Server-only account API calls
+  lib/bookings.ts                Server-only booking and availability API calls
+  lib/api.ts                     Server-only catalogue API calls
+docs/                            Learning guide for each phase
+AGENTS.md                        Phase and commit agreement
 ```
 
-Prisma's generated client, Next.js output, compiled API files, and local `.env` files are ignored. Commit the schema, migrations, seed scripts, package changes, and guides. Next.js's existing `apps/web/AGENTS.md` and `CLAUDE.md` point coding assistants to its installed documentation; the root learning agreement still applies.
+Generated clients, compiled output, local environment files, and dependencies are ignored. The schema, migration, source, tests, package changes, lockfile, and guides belong in the phase's review.
 
 ## Learning workflow
 
-For each phase, the assistant implements a small part, verifies it, and explains it. You review the code, ask questions, and make the commit yourself once it is clear. The next phase starts only after you say you are ready.
-
-The development order is the API foundation, a small movie catalogue, the Next.js customer pages, persistent data and account ownership, safe seat booking, and then the waiting room and its tests. Each part can be split further if needed.
+The assistant implements and verifies one phase. You review the code and learning guide, ask questions, and stage and commit it yourself once it is clear. The next phase starts only when you say you are ready.

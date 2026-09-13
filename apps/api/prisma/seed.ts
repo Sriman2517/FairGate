@@ -17,13 +17,21 @@ async function seed() {
         create: { ...show, startsAt: new Date(show.startsAt) },
         update: {},
       });
+
+      // Inventory belongs to each show. Rerunning the seed preserves booked seats.
+      const seats = ["A", "B", "C", "D"].flatMap((row) =>
+        Array.from({ length: 8 }, (_unused, index) => ({
+          showId: show.id, label: `${row}${index + 1}`, row, number: index + 1,
+        })),
+      );
+      await transaction.showSeat.createMany({ data: seats, skipDuplicates: true });
     }
   });
 }
 
 try {
   await seed();
-  console.log("Demo catalogue seeded. Existing rows were preserved.");
+  console.log("Demo catalogue and seat inventory seeded. Existing rows and bookings were preserved.");
 } catch {
   console.error("Seeding failed. Check DATABASE_URL, database health, and applied migrations.");
   process.exitCode = 1;

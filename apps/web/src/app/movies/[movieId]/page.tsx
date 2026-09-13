@@ -58,10 +58,15 @@ export default async function MoviePage({
                   <p className="screen-name">{show.screenName}</p>
                   <time dateTime={show.startsAt}>{showDateTime.format(new Date(show.startsAt))}</time>
                 </div>
-                <p className="ticket-price">
-                  {ticketPrice.format(show.priceInPaise / 100)}
-                  <span>per ticket</span>
-                </p>
+                <div className="show-booking-link">
+                  <p className="ticket-price">
+                    {ticketPrice.format(show.priceInPaise / 100)}
+                    <span>per ticket</span>
+                  </p>
+                  <Link className="button" href={`/shows/${encodeURIComponent(show.id)}`}>
+                    {new Date(show.startsAt).getTime() <= Date.now() ? "View show" : "Choose a seat"}
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>

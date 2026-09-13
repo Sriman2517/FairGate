@@ -13,6 +13,8 @@
     "dev": "npm run dev:api",
     "dev:api": "npm run dev --workspace @fairgate/api",
     "dev:web": "npm run dev --workspace @fairgate/web",
+    "test:auth": "npm run test:auth --workspace @fairgate/api",
+    "test:bookings": "npm run test:bookings --workspace @fairgate/api",
     "typecheck": "npm run typecheck --workspaces",
     "build": "npm run build --workspaces",
     "start": "npm run start:api",

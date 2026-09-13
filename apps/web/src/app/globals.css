@@ -76,3 +76,60 @@ h3 { font-size: 1.125rem; }
   .ticket-price { text-align: left; }
   .notice { padding: 1.5rem; }
 }
+
+/* Account pages share the cinema catalogue's existing colours and spacing. */
+.header-nav { display: flex; align-items: center; gap: 1rem; }
+.header-nav > a { font-weight: 700; }
+.auth-panel { max-width: 34rem; margin: 3rem auto 0; }
+.auth-panel h1 { font-size: clamp(1.9rem, 5vw, 2.5rem); }
+.auth-form { display: grid; gap: 1.1rem; margin-top: 1.5rem; }
+.auth-form label { display: grid; gap: 0.4rem; font-weight: 700; }
+.auth-form input { width: 100%; min-width: 0; padding: 0.7rem 0.8rem; border: 1px solid #84979d; border-radius: 0.35rem; background: white; color: var(--ink); font: inherit; }
+.auth-form input:focus-visible { outline: 3px solid #bd5700; outline-offset: 2px; }
+.auth-form .field-help { margin-top: -0.7rem; color: var(--muted); font-size: 0.875rem; }
+.form-error { padding: 0.8rem; border: 1px solid #be7770; border-radius: 0.35rem; background: #fff0ed; color: #8b241c; overflow-wrap: anywhere; }
+.button:disabled { opacity: 0.65; cursor: wait; }
+.auth-panel > .auth-switch { margin-top: 1.5rem; }
+.account-details { margin: 1.5rem 0; }
+.account-details dt { font-weight: 700; }
+.account-details dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 400px) { .header-nav .demo-label { display: none; } }
+
+/* Seat availability is confirmed by the API when the customer submits. */
+.show-booking-link { display: grid; gap: 0.65rem; justify-items: end; flex-shrink: 0; }
+.seating-panel { max-width: 48rem; margin-inline: auto; }
+.demo-booking-note { padding: 0.75rem 1rem; background: #e5f2ef; border-radius: 0.35rem; color: #00594f; }
+.cinema-screen { max-width: 30rem; margin: 2.5rem auto 2rem; padding-top: 0.7rem; border-top: 5px solid #81989f; border-radius: 50% 50% 0 0; text-align: center; letter-spacing: 0.2em; color: var(--muted); font-size: 0.75rem; }
+.seat-fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
+.seat-fieldset legend { margin: 0 auto 1rem; font-weight: 700; }
+.seat-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 0.5rem; width: 100%; max-width: 30rem; margin-inline: auto; }
+.seat-choice { position: relative; cursor: pointer; }
+.seat-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.seat { display: grid; place-content: center; min-height: 2.7rem; padding-block: 0.45rem; border: 1px solid var(--accent); border-radius: 0.3rem 0.3rem 0.6rem 0.6rem; color: var(--accent); background: white; font-size: 0.85rem; font-weight: 700; }
+.seat-booked { border-color: #bdc6c9; background: #e2e7e9; color: #576970; text-decoration: line-through; }
+.seat-choice input:checked + .seat:not(.seat-booked) { background: var(--accent); color: white; }
+.seat-choice input:focus-visible + .seat { outline: 3px solid #bd5700; outline-offset: 2px; }
+.seat-choice:has(input:disabled) { cursor: not-allowed; }
+.seat-fieldset:disabled { opacity: 0.7; }
+.seat-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin-top: 1rem; color: var(--muted); font-size: 0.875rem; }
+.booking-form { display: grid; gap: 1rem; }
+.booking-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 0.5rem; font-weight: 700; }
+.booking-form .field-help { color: var(--muted); font-size: 0.875rem; }
+.booking-status { margin-top: 1.5rem; text-align: center; }
+.booking-ticket { max-width: 44rem; margin: 1rem auto 0; border-top: 5px solid var(--accent); }
+.booking-ticket h1 { font-size: clamp(1.8rem, 5vw, 2.7rem); }
+.booking-details { display: grid; grid-template-columns: 1fr 1fr; gap: 1.3rem; margin-block: 2rem; padding-block: 1.5rem; border-block: 1px dashed #84979d; }
+.booking-details > div:nth-child(n + 3) { grid-column: 1 / -1; }
+.booking-details dt { color: var(--muted); font-size: 0.875rem; }
+.booking-details dd { margin: 0.25rem 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.booking-details .ticket-seat { font-size: 2rem; line-height: 1.2; }
+.booking-reference { font-family: monospace; font-size: 0.875rem; }
+.booking-movie-title { font-size: 1.3rem; }
+@media (max-width: 700px) { .header-nav .demo-label { display: none; } }
+@media (max-width: 550px) {
+  .show-booking-link { justify-items: start; }
+  .header-nav { gap: 0.8rem; font-size: 0.875rem; }
+  .seat-grid { gap: 0.25rem; }
+  .seat { font-size: 0.7rem; min-height: 2.4rem; }
+  .seating-panel { padding: 1rem; }
+}
