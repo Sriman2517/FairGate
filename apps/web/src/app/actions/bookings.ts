@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuthenticationRequired, bookingRequest, type Booking } from "../../lib/bookings";
+import { retryAfterSeconds } from "../../lib/retry-after";
 
 export type BookingState = {
   error: string;
   seatLabel?: string;
   unavailableSeat?: string;
   showStarted?: boolean;
+  retryAfterSeconds?: number;
 };
 
 export async function bookSeat(_previousState: BookingState, formData: FormData): Promise<BookingState> {
@@ -30,6 +32,10 @@ export async function bookSeat(_previousState: BookingState, formData: FormData)
     });
     if (!response.ok) {
       const data: { error: { code: string } } = await response.json();
+      if (data.error.code === "TOO_MANY_REQUESTS") {
+        return { error: "Too many booking attempts. Wait before retrying this seat, or check My bookings.", seatLabel,
+          retryAfterSeconds: retryAfterSeconds(response) };
+      }
       if (data.error.code === "ADMISSION_REQUIRED") {
         return { error: "Your checkout turn has ended. Check your turn above and rejoin the waiting room to continue.", seatLabel };
       }

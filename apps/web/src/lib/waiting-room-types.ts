@@ -11,4 +11,5 @@ export interface WaitingRoomResult {
   error?: string;
   signInRequired?: boolean;
   closed?: boolean;
+  retryAfterSeconds?: number;
 }

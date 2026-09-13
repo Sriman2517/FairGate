@@ -6,11 +6,13 @@ import { visitWaitingRoom } from "../app/actions/waiting-room";
 import type { Seat } from "../lib/bookings";
 import type { WaitingRoomResult } from "../lib/waiting-room-types";
 import { BookingForm } from "./booking-form";
+import { useRetryDelay } from "./use-retry-delay";
 
 export function WaitingRoom({ showId, seats, price, initialRequestId, initialResult }: {
   showId: string; seats: Seat[]; price: string; initialRequestId: string; initialResult: WaitingRoomResult;
 }) {
   const [result, action, pending] = useActionState(visitWaitingRoom, initialResult);
+  const retryDelay = useRetryDelay(result);
   const [, startTransition] = useTransition();
   const [remaining, setRemaining] = useState<number | null>(null);
   const room = result.waitingRoom;
@@ -33,7 +35,7 @@ export function WaitingRoom({ showId, seats, price, initialRequestId, initialRes
     const timer = setTimeout(() => {
       const data = new FormData(); data.set("showId", showId); data.set("operation", "status");
       startTransition(() => action(data));
-    }, room?.pollAfterMs ?? 5000);
+    }, result.retryAfterSeconds ? result.retryAfterSeconds * 1000 : room?.pollAfterMs ?? 5000);
     return () => clearTimeout(timer);
   }, [action, pending, result, room, showId]);
 
@@ -42,6 +44,7 @@ export function WaitingRoom({ showId, seats, price, initialRequestId, initialRes
       <section className="waiting-room" aria-labelledby="waiting-room-heading">
         <h3 id="waiting-room-heading">{admitted ? "It’s your turn" : "Your place in the waiting room"}</h3>
         {result.error && <p className="form-error" role="alert">{result.error}</p>}
+        {retryDelay > 0 && <p>Checking resumes in {retryDelay} seconds. Your place or checkout turn may expire during this pause.</p>}
         {room?.status === "waiting" && <>
           <p className="queue-position" role="status">{room.position === 1 ? "You’re next in line" : `Your position: ${room.position}`}</p>
           <p>Keep this page open. Your position updates automatically as checkout turns become available.</p>
@@ -53,11 +56,11 @@ export function WaitingRoom({ showId, seats, price, initialRequestId, initialRes
         {result.signInRequired ? <Link className="button" href={`/login?returnTo=${encodeURIComponent(`/shows/${showId}`)}`}>Sign in again</Link>
           : !result.closed && <form action={action} className="queue-controls">
             <input type="hidden" name="showId" value={showId} />
-            <button className="button" name="operation" value={room?.status === "not_joined" ? "join" : "status"} disabled={pending}>
-              {pending ? "Checking…" : room?.status === "not_joined" ? "Join waiting room" : "Check my turn"}
+            <button className="button" name="operation" value={room?.status === "not_joined" ? "join" : "status"} disabled={pending || retryDelay > 0}>
+              {pending ? "Checking…" : retryDelay > 0 ? "Please wait" : room?.status === "not_joined" ? "Join waiting room" : "Check my turn"}
             </button>
           </form>}
-        <noscript><p>Use “Check my turn” every few seconds to keep your place and see when checkout opens.</p></noscript>
+        <noscript><p>Use “Check my turn” every few seconds to keep your place. After a request-limit pause, wait the displayed time and reload this page.</p></noscript>
       </section>
       {/* Stay mounted so an uncertain booking retry retains its request ID. */}
       <div hidden={!admitted}>

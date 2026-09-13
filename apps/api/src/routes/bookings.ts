@@ -4,6 +4,7 @@ import { Prisma } from "../generated/prisma/client.js";
 import { currentUser } from "../auth/sessions.js";
 import { bookingFields, isUuid, publicBooking, readBookingInput } from "../bookings.js";
 import { getWaitingRoom } from "../waiting-room.js";
+import { enforceRequestLimit } from "../request-limits.js";
 
 export const bookingsRouter = Router();
 
@@ -42,6 +43,8 @@ bookingsRouter.post("/", async (request, response) => {
 
   // A successful retry still works if the show has since started or sold out.
   if (await replayIfPresent(user.id, input, response)) return;
+  // Completed retries above do not spend capacity or depend on Redis availability.
+  await enforceRequestLimit(user.id, "booking");
   const seat = await prisma.showSeat.findUnique({
     where: { showId_label: { showId: input.showId, label: input.seatLabel } },
     select: { show: { select: { startsAt: true, priceInPaise: true, currency: true } } },

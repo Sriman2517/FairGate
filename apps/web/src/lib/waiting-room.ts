@@ -1,6 +1,7 @@
 import "server-only";
 import { AuthenticationRequired, bookingRequest } from "./bookings";
 import type { WaitingRoomResult } from "./waiting-room-types";
+import { retryAfterSeconds } from "./retry-after";
 
 export async function readWaitingRoom(showId: unknown, join = false): Promise<WaitingRoomResult> {
   if (typeof showId !== "string" || showId.length > 120 || !/^[A-Za-z0-9-]+$/.test(showId)) {
@@ -12,6 +13,10 @@ export async function readWaitingRoom(showId: unknown, join = false): Promise<Wa
     });
     if (response.ok) return response.json();
     const data: { error: { code: string } } = await response.json();
+    if (data.error.code === "TOO_MANY_REQUESTS") return {
+      error: "You’re checking too frequently. Please pause and keep just one waiting-room tab open.",
+      retryAfterSeconds: retryAfterSeconds(response),
+    };
     if (data.error.code === "SHOW_STARTED") return { error: "This show has started. Booking is closed.", closed: true };
     if (data.error.code === "SHOW_SOLD_OUT") return { error: "This show has no available seats. Please choose another showtime.", closed: true };
     if (response.status === 404) return { error: "This show is no longer available.", closed: true };

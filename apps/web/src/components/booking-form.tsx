@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { bookSeat } from "../app/actions/bookings";
 import type { Seat } from "../lib/bookings";
+import { useRetryDelay } from "./use-retry-delay";
 
 export function BookingForm({ showId, seats, price, initialRequestId, enabled = true }: {
   showId: string;
@@ -15,6 +16,7 @@ export function BookingForm({ showId, seats, price, initialRequestId, enabled = 
   const [selectedSeat, setSelectedSeat] = useState("");
   const [requestId, setRequestId] = useState(initialRequestId);
   const [state, action, pending] = useActionState(bookSeat, { error: "" });
+  const retryDelay = useRetryDelay(state);
   const selectedAvailable = seats.some((seat) => seat.label === selectedSeat && seat.available)
     && state.unavailableSeat !== selectedSeat;
 
@@ -54,8 +56,10 @@ export function BookingForm({ showId, seats, price, initialRequestId, enabled = 
       {state.error && (!state.seatLabel || state.seatLabel === selectedSeat) && (
         <p className="form-error" role="alert">{state.error}</p>
       )}
-      <button className="button" type="submit" disabled={!enabled || pending || !selectedAvailable || state.showStarted}>
-        {pending ? "Confirming…" : `Confirm demo booking · ${price}`}
+      {retryDelay > 0 && <p className="field-help">You can retry in {retryDelay} seconds. Your checkout turn still has its original deadline.</p>}
+      {retryDelay > 0 && <noscript><p>After waiting, check My bookings before reloading this page to try again.</p></noscript>}
+      <button className="button" type="submit" disabled={!enabled || pending || retryDelay > 0 || !selectedAvailable || state.showStarted}>
+        {pending ? "Confirming…" : retryDelay > 0 ? "Please wait" : `Confirm demo booking · ${price}`}
       </button>
       <p className="field-help">A selection does not hold a seat. Availability is checked when you confirm.</p>
       <p><Link href="/bookings">View My bookings</Link></p>

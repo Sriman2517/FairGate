@@ -16,6 +16,7 @@ if (!["postgres:", "postgresql:"].includes(database.protocol) || database.hostna
 const { prisma } = await import("../src/db.js");
 const { getRedis, closeRedis } = await import("../src/redis.js");
 const { waitingRoomKeys } = await import("../src/waiting-room.js");
+const { requestLimitKey } = await import("../src/request-limits.js");
 
 test("shared FIFO waiting room and enforced checkout admission", async (t) => {
   const runId = randomUUID();
@@ -207,6 +208,7 @@ test("shared FIFO waiting room and enforced checkout admission", async (t) => {
       await prisma.movie.deleteMany({ where: { id: movieId } });
       await prisma.user.deleteMany({ where: { id: { in: users.map((user) => user.id) } } });
       await (await getRedis()).del(showIds.flatMap(waitingRoomKeys));
+      await (await getRedis()).del(users.flatMap(({ id }) => [requestLimitKey(id, "waiting-room"), requestLimitKey(id, "booking")]));
     } finally { await closeRedis(); await prisma.$disconnect(); }
   }
 });

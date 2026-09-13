@@ -6,11 +6,13 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 7: a shared FIFO waiting room.**
+**Phase 8: shared request limits.**
+
+Redis now enforces a shared rolling limit of 60 waiting-room requests and 20 new booking attempts per account per minute. Excess requests receive a retry delay that the page respects. Completed booking retries remain recoverable even when the allowance is exhausted.
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 7 learning guide](docs/phase-07-shared-waiting-room.md). Earlier guides cover [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 8 learning guide](docs/phase-08-shared-request-limits.md). Earlier guides cover [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -39,7 +41,7 @@ npm run db:deploy
 npm run db:seed
 ```
 
-`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 adds the Redis client and local Redis service; it needs no new PostgreSQL migration.
+`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 added the Redis client and local Redis service. If you completed Phase 7, Phase 8 only needs both development servers restarted; it adds no dependencies, migrations, or seed changes.
 
 ## Everyday development
 
@@ -74,6 +76,7 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | `npm run test:auth` | Run auth integration tests against local PostgreSQL. |
 | `npm run test:bookings` | Test admitted booking races, retry handling, and ownership using separate API processes. |
 | `npm run test:waiting-room` | Test FIFO order, shared capacity, expiry, and booking enforcement with real Redis and PostgreSQL. |
+| `npm run test:request-limits` | Test rolling request limits across API processes, account isolation, cooldowns, and successful retries. |
 | `npm run start:api` / `npm run start:web` | Run compiled apps in separate terminals; production browser auth requires HTTPS. |
 | `npm start` | Shortcut for the compiled API only. |
 | `npm run db:start` / `npm run db:stop` | Start / stop PostgreSQL and Redis while retaining data. |
@@ -85,7 +88,7 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 
 Auth tests require the local database at `127.0.0.1:5433/fairgate` with migrations applied. They start their own API on a free port, create uniquely named synthetic accounts, and remove those accounts and their sessions afterward. They do not need the development servers. They check registration races, validation, login, isolation, expiration, revocation, database constraints, and throttling.
 
-Booking and waiting-room tests also require local Redis on port 6380, database 0, and use independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify seat and FIFO admission correctness, not production throughput. Tests clean only their own Redis keys.
+Booking, waiting-room, and request-limit tests also require local Redis on port 6380, database 0, and use independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify seat and FIFO admission correctness, not production throughput. Tests clean only their own Redis keys.
 
 Generation and building require the API environment file but do not query a running database. Runtime requests and integration tests do. Stop an app before starting another on its port. PostgreSQL uses the `fairgate_postgres_data` Docker volume; removing that volume deletes its data and is not part of the normal workflow.
 
@@ -116,7 +119,12 @@ Auth errors include `400 INVALID_INPUT`, `400 INVALID_JSON`, `401 INVALID_CREDEN
 
 All booking endpoints require a valid session. New bookings also require an active checkout turn, otherwise `403 ADMISSION_REQUIRED`. Redis failure returns `503 WAITING_ROOM_UNAVAILABLE` for new bookings; successful request-key replays still work. A taken seat receives `409 SEAT_UNAVAILABLE`; reusing one request ID for a different show/seat receives `409 REQUEST_ID_REUSED`. A new booking for a show that has started receives `409 SHOW_STARTED`; successful retries still return their original booking. Nonexistent inventory receives `404 SEAT_NOT_FOUND`. The server derives the customer and amount rather than trusting request fields. Availability and booking responses use `Cache-Control: no-store`.
 
+Queue joins and status checks share 60 attempts per account in a rolling 60 seconds across all sessions and shows. New validly shaped booking attempts have a separate allowance of 20 per rolling minute, including attempts that later fail. Excess requests return `429 TOO_MANY_REQUESTS` with `Retry-After` in seconds. Successful request-key replays run before this limit and remain recoverable.
+
 ## Scope and limits
+
+- Request limits count attempts per account; they do not establish a per-person purchase limit or prevent bulk-account abuse. Authentication and completed-request lookups still precede the limit.
+- The website backs off on 429 responses. Cooldowns do not extend queue places or checkout turns, and multiple tabs share the same allowance.
 
 - Queue capacity limits admitted customer accounts per show, not simultaneous HTTP requests or bookings per customer. Turns remain allocated until their fixed expiry, including after a booking.
 - FIFO follows Redis join order for active waiters. Repeated joins preserve membership. A waiting page that misses check-ins for 60 seconds loses its place and must explicitly rejoin.
@@ -147,6 +155,8 @@ apps/api/
   src/db.ts                      Prisma client and PostgreSQL adapter
   src/redis.ts                   Shared Redis connection and bounded failure handling
   src/waiting-room.ts            Atomic FIFO admission and expiry
+  src/request-limits.ts          Shared rolling request allowances per account
+  tests/request-limits.test.ts   Concurrent limit, expiry, and recovery checks
   src/routes/waiting-room.ts     Authenticated join and heartbeat endpoints
   tests/waiting-room.test.ts     Queue correctness across API processes
   tests/auth.test.ts             Integration tests using real local PostgreSQL
@@ -157,6 +167,8 @@ apps/web/src/
   app/actions/bookings.ts        Booking submission and conflict refresh
   components/auth-form.tsx       Forms and pending/error feedback
   components/waiting-room.tsx    Queue position, polling, and checkout visibility
+  components/use-retry-delay.ts  Cooldown feedback for queue and booking forms
+  lib/retry-after.ts             Bounded parsing of API retry delays
   app/actions/waiting-room.ts    Authenticated queue checks through Next.js
   lib/auth.ts                    Server-only account API calls
   lib/bookings.ts                Server-only booking and availability API calls

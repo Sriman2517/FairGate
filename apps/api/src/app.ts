@@ -6,6 +6,7 @@ import { bookingsRouter } from "./routes/bookings.js";
 import { waitingRoomRouter } from "./routes/waiting-room.js";
 import { WaitingRoomUnavailable } from "./redis.js";
 import { WaitingRoomClosed, WaitingRoomFull } from "./waiting-room.js";
+import { RequestLimitExceeded } from "./request-limits.js";
 
 export const app = express();
 
@@ -32,6 +33,12 @@ const handleError: ErrorRequestHandler = (error, _request, response, next) => {
   if (error instanceof WaitingRoomUnavailable) {
     response.set("Retry-After", "5").status(503).json({
       error: { code: "WAITING_ROOM_UNAVAILABLE", message: "The waiting room is unavailable. Please try again shortly." },
+    });
+    return;
+  }
+  if (error instanceof RequestLimitExceeded) {
+    response.set("Retry-After", String(error.retryAfterSeconds)).status(429).json({
+      error: { code: "TOO_MANY_REQUESTS", message: "Too many requests. Please wait before trying again." },
     });
     return;
   }

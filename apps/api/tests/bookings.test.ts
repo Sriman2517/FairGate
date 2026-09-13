@@ -17,6 +17,7 @@ if (redisUrl.protocol !== "redis:" || redisUrl.hostname !== "127.0.0.1" || redis
   !["", "/", "/0"].includes(redisUrl.pathname)) throw new Error("Booking tests require local Redis at 127.0.0.1:6380/0.");
 const { getRedis, closeRedis } = await import("../src/redis.js");
 const { waitingRoomKeys } = await import("../src/waiting-room.js");
+const { requestLimitKey } = await import("../src/request-limits.js");
 
 test("durable, isolated seat booking across independent API processes", async (t) => {
   const runId = randomUUID();
@@ -208,6 +209,7 @@ test("durable, isolated seat booking across independent API processes", async (t
       await prisma.movie.deleteMany({ where: { id: movieId } });
       await prisma.user.deleteMany({ where: { id: { in: users.map((user) => user.id) } } });
       await (await getRedis()).del(showIds.flatMap(waitingRoomKeys));
+      await (await getRedis()).del(users.flatMap(({ id }) => [requestLimitKey(id, "waiting-room"), requestLimitKey(id, "booking")]));
     } finally { await closeRedis(); await prisma.$disconnect(); }
   }
 });

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { currentUser } from "../auth/sessions.js";
 import { prisma } from "../db.js";
 import { getWaitingRoom } from "../waiting-room.js";
+import { enforceRequestLimit } from "../request-limits.js";
 
 export const waitingRoomRouter = Router();
 
@@ -14,6 +15,8 @@ waitingRoomRouter.route("/:showId{/:operation}").all(async (request, response, n
     response.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Sign in to join the waiting room." } });
     return;
   }
+  // Share one account budget across joins, status checks, shows, and sessions.
+  await enforceRequestLimit(user.id, "waiting-room");
   const showId = request.params.showId;
   const show = await prisma.show.findUnique({ where: { id: showId }, select: { startsAt: true } });
   if (!show) {
