@@ -30,6 +30,12 @@ export async function bookSeat(_previousState: BookingState, formData: FormData)
     });
     if (!response.ok) {
       const data: { error: { code: string } } = await response.json();
+      if (data.error.code === "ADMISSION_REQUIRED") {
+        return { error: "Your checkout turn has ended. Check your turn above and rejoin the waiting room to continue.", seatLabel };
+      }
+      if (data.error.code === "WAITING_ROOM_UNAVAILABLE") {
+        return { error: "We could not check your checkout turn. Retry the same seat, or check My bookings first.", seatLabel };
+      }
       if (data.error.code === "SEAT_UNAVAILABLE") {
         revalidatePath(`/shows/${showId}`);
         return { error: "Someone booked that seat before you. Please choose another available seat.", seatLabel, unavailableSeat: seatLabel };

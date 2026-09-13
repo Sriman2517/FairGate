@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "test:auth": "prisma generate && tsx --test tests/auth.test.ts",
     "test:bookings": "prisma generate && tsx --test tests/bookings.test.ts",
+    "test:waiting-room": "prisma generate && tsx --test tests/waiting-room.test.ts",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",
@@ -22,7 +23,8 @@
     "argon2": "0.44.0",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
-    "express-rate-limit": "8.7.0"
+    "express-rate-limit": "8.7.0",
+    "redis": "6.2.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

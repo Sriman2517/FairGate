@@ -12,6 +12,11 @@ if (!["postgres:", "postgresql:"].includes(database.protocol) || database.hostna
 }
 const { prisma } = await import("../src/db.js");
 const { hashPassword } = await import("../src/auth/passwords.js");
+const redisUrl = new URL(process.env.REDIS_URL ?? "redis://127.0.0.1:6380");
+if (redisUrl.protocol !== "redis:" || redisUrl.hostname !== "127.0.0.1" || redisUrl.port !== "6380" ||
+  !["", "/", "/0"].includes(redisUrl.pathname)) throw new Error("Booking tests require local Redis at 127.0.0.1:6380/0.");
+const { getRedis, closeRedis } = await import("../src/redis.js");
+const { waitingRoomKeys } = await import("../src/waiting-room.js");
 
 test("durable, isolated seat booking across independent API processes", async (t) => {
   const runId = randomUUID();
@@ -94,6 +99,12 @@ test("durable, isolated seat booking across independent API processes", async (t
     ]);
     servers.push(...await Promise.all([startServer(), startServer()]));
     assert.notEqual(children[0].pid, children[1].pid, "Race requests must use separate API processes.");
+    for (const showId of [mainShow, laterShow]) {
+      for (const customer of [0, 1]) {
+        const join = await request(customer, `/waiting-room/${showId}/join`, users[customer].token, { method: "POST" });
+        assert.equal(join.status, 200); assert.equal(join.body.waitingRoom.status, "admitted");
+      }
+    }
 
     await t.test("public show detail returns ordered availability and rejects an unknown show", async () => {
       const result = await request(0, `/shows/${mainShow}`);
@@ -103,8 +114,8 @@ test("durable, isolated seat booking across independent API processes", async (t
       assert.ok(result.body.seats.every((seat: { available: boolean }) => seat.available));
       expectError(await request(1, `/shows/missing-${runId}`), 404, "SHOW_NOT_FOUND");
     });
-    await t.test("30 customers race one seat through two API processes; exactly one wins", async () => {
-      const results = await Promise.all(users.slice(0, 30).map((_user, index) => book(index % 2, index, "A1")));
+    await t.test("two admitted customers race one seat through two API processes; exactly one wins", async () => {
+      const results = await Promise.all(users.slice(0, 2).map((_user, index) => book(index % 2, index, "A1")));
       assert.equal(results.filter((result) => result.status === 201).length, 1);
       for (const loser of results.filter((result) => result.status !== 201)) expectError(loser, 409, "SEAT_UNAVAILABLE");
       assert.equal(await prisma.booking.count({ where: { showId: mainShow, seatLabel: "A1" } }), 1);
@@ -196,6 +207,7 @@ test("durable, isolated seat booking across independent API processes", async (t
       await prisma.show.deleteMany({ where: { id: { in: showIds } } });
       await prisma.movie.deleteMany({ where: { id: movieId } });
       await prisma.user.deleteMany({ where: { id: { in: users.map((user) => user.id) } } });
-    } finally { await prisma.$disconnect(); }
+      await (await getRedis()).del(showIds.flatMap(waitingRoomKeys));
+    } finally { await closeRedis(); await prisma.$disconnect(); }
   }
 });

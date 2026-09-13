@@ -1,6 +1,7 @@
 // Each fork imports its own app, connection pool, and process-local state.
 import { app } from "../../src/app.js";
 import { prisma } from "../../src/db.js";
+import { closeRedis } from "../../src/redis.js";
 
 const server = app.listen(0, "127.0.0.1", () => {
   const address = server.address();
@@ -14,6 +15,7 @@ async function stop() {
   server.closeAllConnections();
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   await prisma.$disconnect();
+  await closeRedis();
   process.exit(0);
 }
 

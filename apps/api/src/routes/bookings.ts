@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { Prisma } from "../generated/prisma/client.js";
 import { currentUser } from "../auth/sessions.js";
 import { bookingFields, isUuid, publicBooking, readBookingInput } from "../bookings.js";
+import { getWaitingRoom } from "../waiting-room.js";
 
 export const bookingsRouter = Router();
 
@@ -51,6 +52,13 @@ bookingsRouter.post("/", async (request, response) => {
   }
   if (seat.show.startsAt <= new Date()) {
     fail(response, 409, "SHOW_STARTED", "This show has already started.");
+    return;
+  }
+
+  // Replays above work even after admission expires or Redis is unavailable.
+  const admission = await getWaitingRoom(user.id, input.showId, seat.show.startsAt);
+  if (admission.status !== "admitted") {
+    fail(response, 403, "ADMISSION_REQUIRED", "Join the waiting room and wait for your checkout turn.");
     return;
   }
 

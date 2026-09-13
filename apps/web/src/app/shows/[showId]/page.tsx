@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BookingForm } from "../../../components/booking-form";
+import { WaitingRoom } from "../../../components/waiting-room";
 import { getCurrentUser } from "../../../lib/auth";
 import { getShow } from "../../../lib/bookings";
+import { readWaitingRoom } from "../../../lib/waiting-room";
 import { formatPrice, formatShowTime } from "../../../lib/format";
 
 export const metadata = { title: "Choose a seat" };
@@ -16,6 +17,7 @@ export default async function ShowPage({ params }: { params: Promise<{ showId: s
   const user = await getCurrentUser();
   const started = new Date(show.startsAt).getTime() <= Date.now();
   const availableCount = seats.filter((seat) => seat.available).length;
+  const waitingRoom = user && !started && availableCount > 0 ? await readWaitingRoom(showId) : undefined;
 
   return (
     <>
@@ -35,7 +37,8 @@ export default async function ShowPage({ params }: { params: Promise<{ showId: s
         <p className="demo-booking-note">Demo bookings only. No payment is collected.</p>
         <div className="cinema-screen" aria-label="Cinema screen at the front">SCREEN</div>
         {user && !started && availableCount > 0 ? (
-          <BookingForm showId={show.id} seats={seats} price={formatPrice(show.priceInPaise)} initialRequestId={randomUUID()} />
+          <WaitingRoom key={show.id} showId={show.id} seats={seats} price={formatPrice(show.priceInPaise)}
+            initialRequestId={randomUUID()} initialResult={waitingRoom!} />
         ) : (
           <>
             <div className="seat-grid" aria-label="Seat availability">

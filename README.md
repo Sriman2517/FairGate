@@ -6,13 +6,13 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 6: safe single-seat demo bookings.**
+**Phase 7: a shared FIFO waiting room.**
 
-Customers can open a show's seat map, choose one available seat, and confirm a demo booking. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
+Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 6 learning guide](docs/phase-06-safe-seat-booking.md). Earlier guides cover [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 7 learning guide](docs/phase-07-shared-waiting-room.md). Earlier guides cover [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
-Bookings confirm immediately and collect no payment. Multi-seat bookings, temporary holds, cancellation, and waiting-room admission are outside this phase.
+Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
 ## First-time setup
 
@@ -39,7 +39,7 @@ npm run db:deploy
 npm run db:seed
 ```
 
-`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 5, run `db:generate`, `db:deploy`, and `db:seed`, then restart both development servers. Phase 6 adds no dependencies.
+`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 adds the Redis client and local Redis service; it needs no new PostgreSQL migration.
 
 ## Everyday development
 
@@ -55,11 +55,11 @@ npm run dev:api
 npm run dev:web
 ```
 
-Open `http://127.0.0.1:3000`, choose a film and show, then open its seat map. Sign in or create an account when prompted; you will return to that show. Choose an available seat and confirm its demo booking. The confirmation shows the seat, booking reference, showtime, and amount. Open **My bookings** to find it again. Prices are recorded at booking time; no payment is collected.
+Open `http://127.0.0.1:3000`, choose a film and show, then open its seat map. Sign in or create an account when prompted; you will return to that show. Join the waiting room. When your turn opens, choose an available seat and confirm its demo booking. The confirmation shows the seat, booking reference, showtime, and amount. Open **My bookings** to find it again. Prices are recorded at booking time; no payment is collected.
 
 Accounts use a demo email and a unique passphrase of 15–128 characters. Email is not sent or verified. Next.js keeps the session token in an HttpOnly cookie; the API stores its digest in PostgreSQL and checks its seven-day expiry.
 
-The API and PostgreSQL must be available for catalogue and account requests. The website uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart Next.js.
+The API and PostgreSQL must be available for catalogue and account requests. Redis is also required for the waiting room and new bookings. It runs at `127.0.0.1:6380`; the API uses that default or an optional `REDIS_URL` override. The website uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart Next.js.
 
 Use the development commands for local HTTP testing. Production mode sets a `Secure` session cookie and requires HTTPS at the browser. Deployments must also protect the connection to the API. HTTPS hosting and deployment configuration are outside this phase.
 
@@ -69,13 +69,14 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | --- | --- |
 | `npm run dev:api` / `npm run dev:web` | Run the API / website in development. |
 | `npm run dev` | Shortcut for the API only. |
-| `npm run typecheck` | Generate required types and check both workspaces and the auth tests. |
+| `npm run typecheck` | Generate required types and check both workspaces and all integration test files. |
 | `npm run build` | Generate Prisma Client, compile the API, and build the website. |
 | `npm run test:auth` | Run auth integration tests against local PostgreSQL. |
-| `npm run test:bookings` | Test booking races, retry handling, and ownership using separate API processes. |
+| `npm run test:bookings` | Test admitted booking races, retry handling, and ownership using separate API processes. |
+| `npm run test:waiting-room` | Test FIFO order, shared capacity, expiry, and booking enforcement with real Redis and PostgreSQL. |
 | `npm run start:api` / `npm run start:web` | Run compiled apps in separate terminals; production browser auth requires HTTPS. |
 | `npm start` | Shortcut for the compiled API only. |
-| `npm run db:start` / `npm run db:stop` | Start / stop PostgreSQL while retaining data. |
+| `npm run db:start` / `npm run db:stop` | Start / stop PostgreSQL and Redis while retaining data. |
 | `npm run db:generate` | Generate Prisma Client from the schema. |
 | `npm run db:deploy` | Apply migrations already present in Git. |
 | `npm run db:migrate -- --name change_name` | Create and apply a migration after changing the schema locally. |
@@ -84,7 +85,7 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 
 Auth tests require the local database at `127.0.0.1:5433/fairgate` with migrations applied. They start their own API on a free port, create uniquely named synthetic accounts, and remove those accounts and their sessions afterward. They do not need the development servers. They check registration races, validation, login, isolation, expiration, revocation, database constraints, and throttling.
 
-Booking tests use that same local-only guard and independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify correctness, not production throughput or queue fairness.
+Booking and waiting-room tests also require local Redis on port 6380, database 0, and use independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify seat and FIFO admission correctness, not production throughput. Tests clean only their own Redis keys.
 
 Generation and building require the API environment file but do not query a running database. Runtime requests and integration tests do. Stop an app before starting another on its port. PostgreSQL uses the `fairgate_postgres_data` Docker volume; removing that volume deletes its data and is not part of the normal workflow.
 
@@ -103,6 +104,8 @@ Base URL: `http://127.0.0.1:4000`. Authentication endpoints use JSON. Send `Auth
 | `POST /auth/login` | Body: `email`, `password`. `200` with public user and new session. |
 | `GET /auth/me` | `200` with public user, or `401` for an invalid session. |
 | `POST /auth/logout` | `204`; revokes the presented session and succeeds if already absent. |
+| `GET /waiting-room/:showId` | Authenticated status and heartbeat; never auto-joins. |
+| `POST /waiting-room/:showId/join` | Explicit authenticated join; duplicate joins preserve membership. |
 | `POST /bookings` | Body: `showId`, `seatLabel`, UUID `requestId`. `201 { booking }`, or `200` for a successful retry. |
 | `GET /bookings` | `200 { bookings }` for the signed-in customer. |
 | `GET /bookings/:bookingId` | `200 { booking }` for its owner; `404` for missing or other customers' bookings. |
@@ -111,9 +114,13 @@ A public user contains only `id`, `name`, and `email`. Registration/login return
 
 Auth errors include `400 INVALID_INPUT`, `400 INVALID_JSON`, `401 INVALID_CREDENTIALS`, `401 UNAUTHENTICATED`, `409 EMAIL_IN_USE`, `413 PAYLOAD_TOO_LARGE`, and `429 TOO_MANY_ATTEMPTS`. Unexpected failures return `500 INTERNAL_SERVER_ERROR` without database details. A healthy `/health` response does not prove PostgreSQL is reachable.
 
-All booking endpoints require a valid session. A taken seat receives `409 SEAT_UNAVAILABLE`; reusing one request ID for a different show/seat receives `409 REQUEST_ID_REUSED`. A new booking for a show that has started receives `409 SHOW_STARTED`; successful retries still return their original booking. Nonexistent inventory receives `404 SEAT_NOT_FOUND`. The server derives the customer and amount rather than trusting request fields. Availability and booking responses use `Cache-Control: no-store`.
+All booking endpoints require a valid session. New bookings also require an active checkout turn, otherwise `403 ADMISSION_REQUIRED`. Redis failure returns `503 WAITING_ROOM_UNAVAILABLE` for new bookings; successful request-key replays still work. A taken seat receives `409 SEAT_UNAVAILABLE`; reusing one request ID for a different show/seat receives `409 REQUEST_ID_REUSED`. A new booking for a show that has started receives `409 SHOW_STARTED`; successful retries still return their original booking. Nonexistent inventory receives `404 SEAT_NOT_FOUND`. The server derives the customer and amount rather than trusting request fields. Availability and booking responses use `Cache-Control: no-store`.
 
 ## Scope and limits
+
+- Queue capacity limits admitted customer accounts per show, not simultaneous HTTP requests or bookings per customer. Turns remain allocated until their fixed expiry, including after a booking.
+- FIFO follows Redis join order for active waiters. Repeated joins preserve membership. A waiting page that misses check-ins for 60 seconds loses its place and must explicitly rejoin.
+- Redis uses a persistent local volume; this phase does not guarantee queue recovery after data loss or provide high availability. It is not bot-proof or an edge traffic shield. See the Phase 7 guide for the exact limits.
 
 - A seat map is a snapshot, so another customer can book a displayed seat before you confirm. PostgreSQL's unique constraint decides who succeeds. The page refreshes availability after a conflict.
 - A booking is one database insert with a stored price. Show metadata on its confirmation is read from the current catalogue. Show start time is checked during request handling, not locked to the exact insert commit time.
@@ -125,7 +132,7 @@ All booking endpoints require a valid session. A taken seat receives `409 SEAT_U
 ## Repository layout
 
 ```text
-compose.yaml                     Local PostgreSQL service and persistent volume
+compose.yaml                     Local PostgreSQL and Redis services and volumes
 apps/api/
   prisma/schema.prisma           Catalogue, customer, session, seat, and booking models
   prisma/migrations/             Additive SQL history
@@ -138,6 +145,10 @@ apps/api/
   src/routes/bookings.ts         Booking creation, retries, and owner-only reads
   src/bookings.ts                Input validation and public booking response fields
   src/db.ts                      Prisma client and PostgreSQL adapter
+  src/redis.ts                   Shared Redis connection and bounded failure handling
+  src/waiting-room.ts            Atomic FIFO admission and expiry
+  src/routes/waiting-room.ts     Authenticated join and heartbeat endpoints
+  tests/waiting-room.test.ts     Queue correctness across API processes
   tests/auth.test.ts             Integration tests using real local PostgreSQL
   tests/bookings.test.ts         Booking correctness across independent API processes
 apps/web/src/
@@ -145,6 +156,8 @@ apps/web/src/
   app/actions/auth.ts            Server actions and browser cookie changes
   app/actions/bookings.ts        Booking submission and conflict refresh
   components/auth-form.tsx       Forms and pending/error feedback
+  components/waiting-room.tsx    Queue position, polling, and checkout visibility
+  app/actions/waiting-room.ts    Authenticated queue checks through Next.js
   lib/auth.ts                    Server-only account API calls
   lib/bookings.ts                Server-only booking and availability API calls
   lib/api.ts                     Server-only catalogue API calls

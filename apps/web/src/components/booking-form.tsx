@@ -5,11 +5,12 @@ import { useActionState, useState } from "react";
 import { bookSeat } from "../app/actions/bookings";
 import type { Seat } from "../lib/bookings";
 
-export function BookingForm({ showId, seats, price, initialRequestId }: {
+export function BookingForm({ showId, seats, price, initialRequestId, enabled = true }: {
   showId: string;
   seats: Seat[];
   price: string;
   initialRequestId: string;
+  enabled?: boolean;
 }) {
   const [selectedSeat, setSelectedSeat] = useState("");
   const [requestId, setRequestId] = useState(initialRequestId);
@@ -28,7 +29,7 @@ export function BookingForm({ showId, seats, price, initialRequestId }: {
     <form className="booking-form" action={action}>
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="requestId" value={requestId} />
-      <fieldset className="seat-fieldset" disabled={pending || state.showStarted}>
+      <fieldset className="seat-fieldset" disabled={!enabled || pending || state.showStarted}>
         <legend>Choose one seat</legend>
         <div className="seat-grid">
           {seats.map((seat) => {
@@ -53,7 +54,7 @@ export function BookingForm({ showId, seats, price, initialRequestId }: {
       {state.error && (!state.seatLabel || state.seatLabel === selectedSeat) && (
         <p className="form-error" role="alert">{state.error}</p>
       )}
-      <button className="button" type="submit" disabled={pending || !selectedAvailable || state.showStarted}>
+      <button className="button" type="submit" disabled={!enabled || pending || !selectedAvailable || state.showStarted}>
         {pending ? "Confirming…" : `Confirm demo booking · ${price}`}
       </button>
       <p className="field-help">A selection does not hold a seat. Availability is checked when you confirm.</p>
