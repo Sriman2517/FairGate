@@ -32,6 +32,8 @@
     "db:seed": "npm run db:seed --workspace @fairgate/api",
     "db:studio": "npm run db:studio --workspace @fairgate/api",
     "simulate:traffic": "npm run simulate:traffic --workspace @fairgate/api --",
-    "test:traffic": "npm run test:traffic --workspace @fairgate/api"
+    "test:traffic": "npm run test:traffic --workspace @fairgate/api",
+    "test": "npm run test:traffic && npm run test:auth && npm run test:bookings && npm run test:waiting-room && npm run test:request-limits && npm run test:operations",
+    "check": "npm run typecheck && npm test && npm run build"
   }
 }

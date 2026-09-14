@@ -6,9 +6,11 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 11: leave the waiting room and release a checkout turn.**
+**Phase 12: automated checks with GitHub Actions.**
 
-Customers can now leave the waiting room or give up their checkout turn. Redis removes their membership and admits the next live waiter atomically. Rejoining goes to the back of the line; confirmed bookings remain intact.
+Run `npm run check` for type checks, all test suites, and the production build. The FairGate CI workflow runs the same command after a clean dependency install and migrations against temporary PostgreSQL/Redis services on pushes and pull requests. It becomes active when you push the workflow to GitHub.
+
+Customers can leave the waiting room or give up their checkout turn. Redis removes their membership and admits the next live waiter atomically. Rejoining goes to the back of the line; confirmed bookings remain intact.
 
 Run `npm run simulate:traffic` to send a bounded customer burst through two independent APIs, race two admitted customers for one seat, and verify successful retries. Each run saves measured latencies, status counts, admission checks, and cleanup status in an ignored JSON report. This is a local experiment, not a production capacity claim.
 
@@ -18,7 +20,7 @@ Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new boo
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 11 learning guide](docs/phase-11-leave-waiting-room.md). Earlier guides cover [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 12 learning guide](docs/phase-12-automated-checks.md). Earlier guides cover [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -77,6 +79,8 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | --- | --- |
 | `npm run dev:api` / `npm run dev:web` | Run the API / website in development. |
 | `npm run dev` | Shortcut for the API only. |
+| `npm run check` | Run type checks, all test suites, and the production build; stop on failure. Services and migrations must be ready. |
+| `npm test` | Run all six test suites sequentially. |
 | `npm run typecheck` | Generate required types and check both workspaces and all integration test files. |
 | `npm run build` | Generate Prisma Client, compile the API, and build the website. |
 | `npm run simulate:traffic -- --customers 100 --concurrency 20` | Run a local burst, seat race, and retry experiment; save a report. |
@@ -162,6 +166,7 @@ Register an account first, then run `npm run operator:set -- --email "your-email
 ## Repository layout
 
 ```text
+.github/workflows/ci.yml          Clean install, fresh test database, and automated checks
 compose.yaml                     Local PostgreSQL and Redis services and volumes
 apps/api/
   prisma/schema.prisma           Catalogue, customer, session, seat, and booking models

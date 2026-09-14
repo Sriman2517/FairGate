@@ -1,0 +1,72 @@
+name: FairGate CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# New commits supersede older checks for the same branch or pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, tests, and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    # These are disposable test credentials, never production secrets.
+    env:
+      DATABASE_URL: postgresql://fairgate:fairgate_dev@127.0.0.1:5433/fairgate
+      REDIS_URL: redis://127.0.0.1:6380/0
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: fairgate
+          POSTGRES_PASSWORD: fairgate_dev
+          POSTGRES_DB: fairgate
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U fairgate -d fairgate"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Apply migrations to the fresh test database
+        run: npm run db:deploy
+
+      - name: Run the same checks used locally
+        run: npm run check
