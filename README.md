@@ -6,7 +6,9 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 12: automated checks with GitHub Actions.**
+**Phase 13: request IDs and structured API logs.**
+
+API responses now include a server-generated `X-Request-ID`. A matching JSON log line records the method, route template, status, duration, and completion/abort outcome. Request bodies, headers, query strings, and customer identifiers are excluded.
 
 Run `npm run check` for type checks, all test suites, and the production build. The FairGate CI workflow runs the same command after a clean dependency install and migrations against temporary PostgreSQL/Redis services on pushes and pull requests. It becomes active when you push the workflow to GitHub.
 
@@ -20,7 +22,7 @@ Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new boo
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 12 learning guide](docs/phase-12-automated-checks.md). Earlier guides cover [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 13 learning guide](docs/phase-13-request-tracing.md). Earlier guides cover [automated checks](docs/phase-12-automated-checks.md), [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -80,13 +82,14 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | `npm run dev:api` / `npm run dev:web` | Run the API / website in development. |
 | `npm run dev` | Shortcut for the API only. |
 | `npm run check` | Run type checks, all test suites, and the production build; stop on failure. Services and migrations must be ready. |
-| `npm test` | Run all six test suites sequentially. |
+| `npm test` | Run all seven test suites sequentially. |
 | `npm run typecheck` | Generate required types and check both workspaces and all integration test files. |
 | `npm run build` | Generate Prisma Client, compile the API, and build the website. |
 | `npm run simulate:traffic -- --customers 100 --concurrency 20` | Run a local burst, seat race, and retry experiment; save a report. |
 | `npm run test:traffic` | Test experiment bounds, metrics, concurrency, and failure draining without databases. |
 | `npm run test:operations` | Test operator authorization, role changes, read-only snapshots, and degraded Redis responses. |
 | `npm run operator:set -- --email "your-email@example.com" --role OPERATOR` | Grant an existing local account operator access; use `CUSTOMER` to revoke. |
+| `npm run test:tracing` | Test request IDs, safe log fields, errors, parallel calls, and disconnected responses without databases. |
 | `npm run test:auth` | Run auth integration tests against local PostgreSQL. |
 | `npm run test:bookings` | Test admitted booking races, retry handling, and ownership using separate API processes. |
 | `npm run test:waiting-room` | Test FIFO order, shared capacity, expiry, and booking enforcement with real Redis and PostgreSQL. |
@@ -145,6 +148,10 @@ With local PostgreSQL/Redis running and migrations applied, run `npm run simulat
 
 Register an account first, then run `npm run operator:set -- --email "your-email@example.com" --role OPERATOR` from the repository root. Open `http://127.0.0.1:3000/operations` and sign in. This command only accepts the local FairGate database. Use the same command with `--role CUSTOMER` to revoke access. Changes affect existing sessions on their next operator request.
 
+## API request tracing
+
+Use `curl.exe -i http://127.0.0.1:4000/health` to see an `X-Request-ID`, then find its matching JSON entry in the API terminal. Every HTTP attempt gets a new diagnostic ID; booking idempotency keys keep their existing meaning. Next.js does not yet forward this API header into browser responses. See the [Phase 13 guide](docs/phase-13-request-tracing.md) for fields and limits.
+
 ## Scope and limits
 
 - The operator dashboard is a manually refreshed snapshot of up to 50 upcoming shows, not historical telemetry. PostgreSQL counts use a consistent database transaction; Redis counts have their own observation time. These are not one atomic cross-store snapshot. The batched queue read uses the current standalone Redis deployment.
@@ -173,6 +180,8 @@ apps/api/
   prisma/migrations/             Additive SQL history
   prisma/seed.ts                 Repeatable catalogue inserts
   src/app.ts                     Route registration, JSON parser, error handling
+  src/request-logging.ts         Request IDs and structured response lifecycle logs
+  tests/request-logging.test.ts  HTTP tracing and sensitive-input exclusion checks
   src/auth/                      Input validation, password hashing, sessions
   src/routes/auth.ts             Customer account endpoints and attempt limits
   src/routes/movies.ts           Catalogue endpoints

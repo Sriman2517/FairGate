@@ -20,7 +20,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "simulate:traffic": "prisma generate && tsx scripts/local-traffic.ts",
-    "test:traffic": "tsx --test tests/traffic-metrics.test.ts"
+    "test:traffic": "tsx --test tests/traffic-metrics.test.ts",
+    "test:tracing": "tsx --test tests/request-logging.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

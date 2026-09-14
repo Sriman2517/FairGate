@@ -1,3 +1,4 @@
+import { logRouteGroup, requestLogging } from "./request-logging.js";
 import express, { type ErrorRequestHandler } from "express";
 import { moviesRouter } from "./routes/movies.js";
 import { authRouter } from "./routes/auth.js";
@@ -10,22 +11,23 @@ import { RequestLimitExceeded } from "./request-limits.js";
 import { operationsRouter } from "./routes/operations.js";
 
 export const app = express();
+app.use(requestLogging());
 
 app.get("/health", (_request, response) => {
   response.status(200).json({ status: "ok", service: "fairgate-api" });
 });
 
-app.use("/movies", moviesRouter);
+app.use("/movies", logRouteGroup("/movies"), moviesRouter);
 // Availability and customer-specific data must be fetched fresh, including errors.
 app.use(["/auth", "/shows", "/bookings", "/waiting-room", "/operations"], (_request, response, next) => {
   response.set("Cache-Control", "no-store");
   next();
 });
-app.use("/auth", express.json({ limit: "4kb", strict: false }), authRouter);
-app.use("/shows", showsRouter);
-app.use("/bookings", express.json({ limit: "4kb", strict: false }), bookingsRouter);
-app.use("/waiting-room", waitingRoomRouter);
-app.use("/operations", operationsRouter);
+app.use("/auth", logRouteGroup("/auth"), express.json({ limit: "4kb", strict: false }), authRouter);
+app.use("/shows", logRouteGroup("/shows"), showsRouter);
+app.use("/bookings", logRouteGroup("/bookings"), express.json({ limit: "4kb", strict: false }), bookingsRouter);
+app.use("/waiting-room", logRouteGroup("/waiting-room"), waitingRoomRouter);
+app.use("/operations", logRouteGroup("/operations"), operationsRouter);
 
 const handleError: ErrorRequestHandler = (error, _request, response, next) => {
   if (response.headersSent) {
@@ -62,7 +64,7 @@ const handleError: ErrorRequestHandler = (error, _request, response, next) => {
     response.status(413).json({ error: { code: "PAYLOAD_TOO_LARGE", message: "The request body is too large." } });
     return;
   }
-  console.error("An API request failed.", error instanceof Error ? error.name : "UnknownError");
+  // The completion log records this 500 with its request ID; never log error payloads.
   response.status(500).json({
     error: { code: "INTERNAL_SERVER_ERROR", message: "Something went wrong. Please try again." },
   });
