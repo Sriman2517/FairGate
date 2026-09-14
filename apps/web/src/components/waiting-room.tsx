@@ -43,6 +43,7 @@ export function WaitingRoom({ showId, seats, price, initialRequestId, initialRes
     <>
       <section className="waiting-room" aria-labelledby="waiting-room-heading">
         <h3 id="waiting-room-heading">{admitted ? "It’s your turn" : "Your place in the waiting room"}</h3>
+        {result.notice && <p role="status">{result.notice}</p>}
         {result.error && <p className="form-error" role="alert">{result.error}</p>}
         {retryDelay > 0 && <p>Checking resumes in {retryDelay} seconds. Your place or checkout turn may expire during this pause.</p>}
         {room?.status === "waiting" && <>
@@ -59,7 +60,11 @@ export function WaitingRoom({ showId, seats, price, initialRequestId, initialRes
             <button className="button" name="operation" value={room?.status === "not_joined" ? "join" : "status"} disabled={pending || retryDelay > 0}>
               {pending ? "Checking…" : retryDelay > 0 ? "Please wait" : room?.status === "not_joined" ? "Join waiting room" : "Check my turn"}
             </button>
+            {(room?.status === "waiting" || room?.status === "admitted") && <button className="button" name="operation" value="leave" disabled={pending || retryDelay > 0}>
+              {admitted ? "Give up my turn" : "Leave waiting room"}
+            </button>}
           </form>}
+        {(room?.status === "waiting" || room?.status === "admitted") && <p>If you leave, rejoining puts you at the back of the line. Leaving does not cancel a booking.</p>}
         <noscript><p>Use “Check my turn” every few seconds to keep your place. After a request-limit pause, wait the displayed time and reload this page.</p></noscript>
       </section>
       {/* Stay mounted so an uncertain booking retry retains its request ID. */}

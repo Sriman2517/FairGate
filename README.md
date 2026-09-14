@@ -6,7 +6,9 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 10: repeatable local traffic simulation.**
+**Phase 11: leave the waiting room and release a checkout turn.**
+
+Customers can now leave the waiting room or give up their checkout turn. Redis removes their membership and admits the next live waiter atomically. Rejoining goes to the back of the line; confirmed bookings remain intact.
 
 Run `npm run simulate:traffic` to send a bounded customer burst through two independent APIs, race two admitted customers for one seat, and verify successful retries. Each run saves measured latencies, status counts, admission checks, and cleanup status in an ignored JSON report. This is a local experiment, not a production capacity claim.
 
@@ -16,7 +18,7 @@ Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new boo
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 10 learning guide](docs/phase-10-local-traffic-simulation.md). Earlier guides cover [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 11 learning guide](docs/phase-11-leave-waiting-room.md). Earlier guides cover [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -45,7 +47,7 @@ npm run db:deploy
 npm run db:seed
 ```
 
-`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 added the Redis client and local Redis service. Phase 9 adds the operator-role migration: run `npm run db:deploy` and `npm run db:generate` before restarting the API. Phase 10 adds local scripts only, with no dependency, migration, or application behavior changes.
+`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 added the Redis client and local Redis service. Phase 9 adds the operator-role migration: run `npm run db:deploy` and `npm run db:generate` before restarting the API. Phase 10 adds local scripts only. Phase 11 adds leave controls with no dependency, migration, or seed changes; restart both development servers to use it.
 
 ## Everyday development
 
@@ -117,6 +119,7 @@ Base URL: `http://127.0.0.1:4000`. Authentication endpoints use JSON. Send `Auth
 | `GET /auth/me` | `200` with public user, or `401` for an invalid session. |
 | `POST /auth/logout` | `204`; revokes the presented session and succeeds if already absent. |
 | `GET /waiting-room/:showId` | Authenticated status and heartbeat; never auto-joins. |
+| `POST /waiting-room/:showId/leave` | Remove the signed-in account and promote live waiters when the show is open with inventory. Confirmed bookings are unchanged. |
 | `POST /waiting-room/:showId/join` | Explicit authenticated join; duplicate joins preserve membership. |
 | `POST /bookings` | Body: `showId`, `seatLabel`, UUID `requestId`. `201 { booking }`, or `200` for a successful retry. |
 | `GET /bookings` | `200 { bookings }` for the signed-in customer. |
@@ -128,7 +131,7 @@ Auth errors include `400 INVALID_INPUT`, `400 INVALID_JSON`, `401 INVALID_CREDEN
 
 All booking endpoints require a valid session. New bookings also require an active checkout turn, otherwise `403 ADMISSION_REQUIRED`. Redis failure returns `503 WAITING_ROOM_UNAVAILABLE` for new bookings; successful request-key replays still work. A taken seat receives `409 SEAT_UNAVAILABLE`; reusing one request ID for a different show/seat receives `409 REQUEST_ID_REUSED`. A new booking for a show that has started receives `409 SHOW_STARTED`; successful retries still return their original booking. Nonexistent inventory receives `404 SEAT_NOT_FOUND`. The server derives the customer and amount rather than trusting request fields. Availability and booking responses use `Cache-Control: no-store`.
 
-Queue joins and status checks share 60 attempts per account in a rolling 60 seconds across all sessions and shows. New validly shaped booking attempts have a separate allowance of 20 per rolling minute, including attempts that later fail. Excess requests return `429 TOO_MANY_REQUESTS` with `Retry-After` in seconds. Successful request-key replays run before this limit and remain recoverable.
+Queue joins, status checks, and leaves share 60 attempts per account in a rolling 60 seconds across all sessions and shows. New validly shaped booking attempts have a separate allowance of 20 per rolling minute, including attempts that later fail. Excess requests return `429 TOO_MANY_REQUESTS` with `Retry-After` in seconds. Successful request-key replays run before this limit and remain recoverable.
 
 ## Local traffic experiment
 
@@ -144,7 +147,8 @@ Register an account first, then run `npm run operator:set -- --email "your-email
 - Request limits count attempts per account; they do not establish a per-person purchase limit or prevent bulk-account abuse. Authentication and completed-request lookups still precede the limit.
 - The website backs off on 429 responses. Cooldowns do not extend queue places or checkout turns, and multiple tabs share the same allowance.
 
-- Queue capacity limits admitted customer accounts per show, not simultaneous HTTP requests or bookings per customer. Turns remain allocated until their fixed expiry, including after a booking.
+- Queue capacity limits admitted customer accounts per show, not simultaneous HTTP requests or bookings per customer. Turns remain allocated until their fixed expiry unless explicitly given up; completing a booking does not automatically release them.
+- Leaving is account/show scoped across tabs. A later explicit rejoin returns to the tail. Leaving cannot cancel a booking insert that already passed its admission check; successful booking retries still work.
 - FIFO follows Redis join order for active waiters. Repeated joins preserve membership. A waiting page that misses check-ins for 60 seconds loses its place and must explicitly rejoin.
 - Redis uses a persistent local volume; this phase does not guarantee queue recovery after data loss or provide high availability. It is not bot-proof or an edge traffic shield. See the Phase 7 guide for the exact limits.
 

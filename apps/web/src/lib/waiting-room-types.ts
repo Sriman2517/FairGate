@@ -9,6 +9,7 @@ export interface WaitingRoomState {
 export interface WaitingRoomResult {
   waitingRoom?: WaitingRoomState;
   error?: string;
+  notice?: string;
   signInRequired?: boolean;
   closed?: boolean;
   retryAfterSeconds?: number;

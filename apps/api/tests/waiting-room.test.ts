@@ -21,8 +21,8 @@ const { requestLimitKey } = await import("../src/request-limits.js");
 test("shared FIFO waiting room and enforced checkout admission", async (t) => {
   const runId = randomUUID();
   const movieId = `queue-test-${runId}`;
-  const showIds = ["order", "race", "other", "past", "empty", "limit", "booking"].map((name) => `${name}-${runId}`);
-  const [orderShow, raceShow, otherShow, pastShow, emptyShow, limitShow, bookingShow] = showIds;
+  const showIds = ["order", "race", "other", "past", "empty", "limit", "booking", "leave", "leave-race", "leave-booking"].map((name) => `${name}-${runId}`);
+  const [orderShow, raceShow, otherShow, pastShow, emptyShow, limitShow, bookingShow, leaveShow, leaveRaceShow, leaveBookingShow] = showIds;
   const users = Array.from({ length: 30 }, (_unused, index) => ({
     id: randomUUID(), email: `queue-${index}-${runId}@fairgate.test`, token: randomBytes(32).toString("base64url"),
   }));
@@ -70,6 +70,9 @@ test("shared FIFO waiting room and enforced checkout admission", async (t) => {
   }
   function room(customer: number, showId = orderShow, join = false, server = customer % 2) {
     return request(server, `/waiting-room/${showId}${join ? "/join" : ""}`, customer, { method: join ? "POST" : "GET" });
+  }
+  function leave(customer: number, showId = leaveShow, server = customer % 2) {
+    return request(server, `/waiting-room/${showId}/leave`, customer, { method: "POST" });
   }
   function book(customer: number, showId: string, requestId = randomUUID(), server = customer % 2, extras = {}) {
     return request(server, "/bookings", customer, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -196,6 +199,92 @@ test("shared FIFO waiting room and enforced checkout admission", async (t) => {
       assert.equal(replay.status, 200); assert.equal(replay.body.booking.id, created.body.booking.id);
       error(await room(1, bookingShow, true, failingServer), 503, "WAITING_ROOM_UNAVAILABLE");
       assert.equal(await prisma.booking.count({ where: { showId: bookingShow } }), 1);
+    });
+    await t.test("leaving is authenticated, POST-only, account-scoped, and rejoins at the tail", async () => {
+      for (const customer of [0, 1, 2, 3]) await room(customer, leaveShow, true);
+      const keys = waitingRoomKeys(leaveShow);
+      const otherMembership = await redis.zScore(waitingRoomKeys(otherShow)[1], users[0].id);
+      error(await request(0, `/waiting-room/${leaveShow}/leave`, undefined, { method: "POST" }), 401, "UNAUTHENTICATED");
+      const getLeave = await fetch(`${servers[0]}/waiting-room/${leaveShow}/leave`, { headers: { Authorization: `Bearer ${users[0].token}` } });
+      assert.equal(getLeave.status, 404); await getLeave.text();
+      const before = await redis.zRangeWithScores(keys[1], 0, -1);
+      const removed = await request(0, `/waiting-room/${leaveShow}/leave`, 2, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: users[1].id }) });
+      assert.equal(removed.status, 200); assert.equal(removed.body.waitingRoom.status, "not_joined");
+      assert.equal(removed.body.waitingRoom.expiresAt, null); assert.equal(removed.body.waitingRoom.position, null);
+      assert.deepEqual(await redis.zRangeWithScores(keys[1], 0, -1), before);
+      assert.equal(await redis.zScore(keys[0], users[2].id), null); assert.equal(await redis.zScore(keys[2], users[2].id), null);
+      assert.equal((await room(3, leaveShow)).body.waitingRoom.position, 1);
+      assert.equal((await room(2, leaveShow, true)).body.waitingRoom.position, 2);
+      assert.equal(await redis.zScore(waitingRoomKeys(otherShow)[1], users[0].id), otherMembership);
+      error(await leave(0, `missing-${runId}`), 404, "SHOW_NOT_FOUND");
+    });
+    await t.test("giving up a turn promotes the oldest waiter immediately and repeated leaves preserve its deadline", async () => {
+      const keys = waitingRoomKeys(leaveShow);
+      const result = await leave(0);
+      assert.equal(result.status, 200); assert.equal(result.body.waitingRoom.status, "not_joined");
+      // Read raw membership BEFORE any customer poll can perform promotion.
+      assert.deepEqual((await redis.zRange(keys[1], 0, -1)).sort(), [users[1].id, users[3].id].sort());
+      assert.equal(await redis.zScore(keys[2], users[3].id), null);
+      const before = await redis.zRangeWithScores(keys[1], 0, -1);
+      const repeated = await Promise.all(Array.from({ length: 8 }, (_, i) => leave(0, leaveShow, i % 2)));
+      assert.ok(repeated.every((result) => result.status === 200 && result.body.waitingRoom.status === "not_joined"));
+      assert.deepEqual(await redis.zRangeWithScores(keys[1], 0, -1), before);
+      assert.equal((await room(0, leaveShow)).body.waitingRoom.status, "not_joined", "A late heartbeat cannot rejoin after leaving.");
+      error(await book(0, leaveShow), 403, "ADMISSION_REQUIRED");
+    });
+    await t.test("concurrent leave and joins retain FIFO capacity and skip expired waiters", async () => {
+      for (const customer of [0, 1, 2, 3]) await room(customer, leaveRaceShow, true);
+      const keys = waitingRoomKeys(leaveRaceShow);
+      const results = await Promise.all([leave(0, leaveRaceShow, 0), leave(0, leaveRaceShow, 1),
+        ...Array.from({ length: 10 }, (_, i) => room(i + 10, leaveRaceShow, true))]);
+      assert.ok(results.every((result) => result.status === 200));
+      assert.deepEqual((await redis.zRange(keys[1], 0, -1)).sort(), [users[1].id, users[2].id].sort());
+      const order = await redis.zRange(keys[0], 0, -1);
+      assert.equal(order[0], users[3].id);
+      await redis.zAdd(keys[2], { value: users[3].id, score: 0 });
+      await leave(1, leaveRaceShow);
+      assert.deepEqual((await redis.zRange(keys[1], 0, -1)).sort(), [users[2].id, order[1]].sort());
+      assert.equal(await redis.zScore(keys[0], users[3].id), null);
+      assert.equal(await redis.zCard(keys[1]), 2);
+    });
+    await t.test("leaving preserves confirmed bookings and successful retries but denies a fresh booking", async () => {
+      for (const customer of [4, 5, 6]) await room(customer, leaveBookingShow, true);
+      const requestId = randomUUID();
+      const created = await book(4, leaveBookingShow, requestId); assert.equal(created.status, 201);
+      assert.equal((await leave(4, leaveBookingShow)).body.waitingRoom.status, "not_joined");
+      const replay = await book(4, leaveBookingShow, requestId, 1);
+      assert.equal(replay.status, 200); assert.equal(replay.body.booking.id, created.body.booking.id);
+      error(await book(4, leaveBookingShow, randomUUID(), 0, { seatLabel: "A2" }), 403, "ADMISSION_REQUIRED");
+      assert.equal((await book(6, leaveBookingShow, randomUUID(), 0, { seatLabel: "A2" })).status, 201);
+      assert.equal(await prisma.booking.count({ where: { showId: leaveBookingShow, userId: users[4].id } }), 1);
+    });
+    await t.test("closed and sold-out shows allow removal without admitting another customer", async () => {
+      for (const showId of [pastShow, emptyShow]) {
+        const keys = waitingRoomKeys(showId);
+        const futureDeadline = Date.now() + 60000;
+        await redis.zAdd(keys[1], { value: users[7].id, score: futureDeadline });
+        await redis.zAdd(keys[0], { value: users[8].id, score: 1 });
+        await redis.zAdd(keys[2], { value: users[8].id, score: futureDeadline });
+        const result = await leave(7, showId);
+        assert.equal(result.status, 200); assert.equal(result.body.waitingRoom.status, "not_joined");
+        assert.equal(await redis.zCard(keys[1]), 0);
+        assert.equal(await redis.zScore(keys[0], users[8].id), 1);
+        assert.equal((await leave(8, showId)).status, 200);
+        assert.equal(await redis.zCard(keys[0]), 0);
+      }
+    });
+    await t.test("failed or throttled leaves do not pretend membership was removed", async () => {
+      await room(25, leaveShow, true);
+      const keys = waitingRoomKeys(leaveShow);
+      const before = await redis.zRangeWithScores(keys[0], 0, -1);
+      const budget = requestLimitKey(users[25].id, "waiting-room");
+      await redis.zAdd(budget, Array.from({ length: 60 }, (_, i) => ({ value: `fixture-${i}`, score: Date.now() })));
+      error(await leave(25), 429, "TOO_MANY_REQUESTS");
+      assert.deepEqual(await redis.zRangeWithScores(keys[0], 0, -1), before);
+      await redis.del(budget);
+      error(await leave(25, leaveShow, servers.length - 1), 503, "WAITING_ROOM_UNAVAILABLE");
+      assert.deepEqual(await redis.zRangeWithScores(keys[0], 0, -1), before);
+      assert.equal((await leave(25)).body.waitingRoom.status, "not_joined");
     });
   } finally {
     await Promise.allSettled(children.map(stopServer));

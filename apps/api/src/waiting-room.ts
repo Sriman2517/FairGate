@@ -36,7 +36,14 @@ local capacity, checkoutMs, heartbeatMs, maxWaiting, startsAt =
   tonumber(ARGV[3]), tonumber(ARGV[4]), tonumber(ARGV[5]), tonumber(ARGV[6]), tonumber(ARGV[7])
 local clock = redis.call('TIME')
 local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
-if now >= startsAt then return {'closed', 0, 0, now} end
+if now >= startsAt and mode ~= 'leave' then return {'closed', 0, 0, now} end
+
+-- Leaving and admitting the next live waiter happen in this same atomic script.
+if mode == 'leave' then
+  redis.call('ZREM', waiting, user)
+  redis.call('ZREM', leases, user)
+  redis.call('ZREM', active, user)
+end
 
 -- Expire BEFORE renewing: a late poll cannot recover an abandoned position.
 local abandoned = redis.call('ZRANGEBYSCORE', leases, '-inf', now)
@@ -61,7 +68,7 @@ end
 
 -- A newcomer enters at the tail BEFORE promotion; polling faster cannot jump the queue.
 local free = math.max(0, capacity - redis.call('ZCARD', active))
-if free > 0 then
+if free > 0 and now < startsAt and ARGV[8] == '1' then
   local nextUsers = redis.call('ZRANGE', waiting, 0, free - 1)
   for _, member in ipairs(nextUsers) do
     redis.call('ZREM', waiting, member)
@@ -80,12 +87,20 @@ if rank then return {'waiting', rank + 1, tonumber(redis.call('ZSCORE', leases, 
 return {'not_joined', 0, 0, now}
 `;
 
-export async function getWaitingRoom(userId: string, showId: string, startsAt: Date, join = false): Promise<WaitingRoomState> {
+export function getWaitingRoom(userId: string, showId: string, startsAt: Date, join = false): Promise<WaitingRoomState> {
+  return updateWaitingRoom(userId, showId, startsAt, join ? "join" : "status", true);
+}
+
+export function leaveWaitingRoom(userId: string, showId: string, startsAt: Date, hasAvailableSeats: boolean): Promise<WaitingRoomState> {
+  return updateWaitingRoom(userId, showId, startsAt, "leave", hasAvailableSeats);
+}
+
+async function updateWaitingRoom(userId: string, showId: string, startsAt: Date, operation: "join" | "status" | "leave", canPromote: boolean): Promise<WaitingRoomState> {
   const result = await runRedis((connection) => connection.eval(advanceRoom, {
     keys: waitingRoomKeys(showId),
-    arguments: [userId, join ? "join" : "status", String(waitingRoomRules.capacity),
+    arguments: [userId, operation, String(waitingRoomRules.capacity),
       String(waitingRoomRules.checkoutMs), String(waitingRoomRules.heartbeatMs),
-      String(waitingRoomRules.maxWaiting), String(startsAt.getTime())],
+      String(waitingRoomRules.maxWaiting), String(startsAt.getTime()), canPromote ? "1" : "0"],
   })) as [WaitingRoomState["status"] | "full" | "closed", number, number, number];
   const [status, position, expiresAt, now] = result;
   if (status === "full") throw new WaitingRoomFull();
