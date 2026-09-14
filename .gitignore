@@ -8,3 +8,6 @@ apps/api/src/generated/
 .env
 .env.*
 !.env.example
+
+# Machine-specific local traffic experiment output
+apps/api/reports/

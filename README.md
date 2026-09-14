@@ -6,15 +6,17 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 9: operator dashboard.**
+**Phase 10: repeatable local traffic simulation.**
 
-Operators can now open `/operations` to inspect upcoming shows, seat inventory, live waiting customers, and active checkout turns. The API checks a database-backed operator role on every request. Snapshot reads never advance a queue, and unavailable Redis counts are shown as unknown.
+Run `npm run simulate:traffic` to send a bounded customer burst through two independent APIs, race two admitted customers for one seat, and verify successful retries. Each run saves measured latencies, status counts, admission checks, and cleanup status in an ignored JSON report. This is a local experiment, not a production capacity claim.
+
+Operators can open `/operations` to inspect upcoming shows, seat inventory, live waiting customers, and active checkout turns. The API checks a database-backed operator role on every request. Snapshot reads never advance a queue, and unavailable Redis counts are shown as unknown.
 
 Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new booking attempts per account per minute. Excess requests receive a retry delay that the page respects. Completed booking retries remain recoverable even when the allowance is exhausted.
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 9 learning guide](docs/phase-09-operator-dashboard.md). Earlier guides cover [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 10 learning guide](docs/phase-10-local-traffic-simulation.md). Earlier guides cover [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -43,7 +45,7 @@ npm run db:deploy
 npm run db:seed
 ```
 
-`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 added the Redis client and local Redis service. If you completed Phase 7, Phase 8 only needs both development servers restarted; it adds no dependencies, migrations, or seed changes.
+`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 added the Redis client and local Redis service. Phase 9 adds the operator-role migration: run `npm run db:deploy` and `npm run db:generate` before restarting the API. Phase 10 adds local scripts only, with no dependency, migration, or application behavior changes.
 
 ## Everyday development
 
@@ -75,6 +77,8 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | `npm run dev` | Shortcut for the API only. |
 | `npm run typecheck` | Generate required types and check both workspaces and all integration test files. |
 | `npm run build` | Generate Prisma Client, compile the API, and build the website. |
+| `npm run simulate:traffic -- --customers 100 --concurrency 20` | Run a local burst, seat race, and retry experiment; save a report. |
+| `npm run test:traffic` | Test experiment bounds, metrics, concurrency, and failure draining without databases. |
 | `npm run test:operations` | Test operator authorization, role changes, read-only snapshots, and degraded Redis responses. |
 | `npm run operator:set -- --email "your-email@example.com" --role OPERATOR` | Grant an existing local account operator access; use `CUSTOMER` to revoke. |
 | `npm run test:auth` | Run auth integration tests against local PostgreSQL. |
@@ -126,6 +130,10 @@ All booking endpoints require a valid session. New bookings also require an acti
 
 Queue joins and status checks share 60 attempts per account in a rolling 60 seconds across all sessions and shows. New validly shaped booking attempts have a separate allowance of 20 per rolling minute, including attempts that later fail. Excess requests return `429 TOO_MANY_REQUESTS` with `Retry-After` in seconds. Successful request-key replays run before this limit and remain recoverable.
 
+## Local traffic experiment
+
+With local PostgreSQL/Redis running and migrations applied, run `npm run simulate:traffic`. It creates temporary fixtures and its own two API processes, then cleans them up. The default is 100 customers and join concurrency 20. Reports appear in `apps/api/reports/`; keep the configuration, report, and source revision together when interpreting results. The [Phase 10 guide](docs/phase-10-local-traffic-simulation.md) explains the measurements and limits.
+
 ## Operator access
 
 Register an account first, then run `npm run operator:set -- --email "your-email@example.com" --role OPERATOR` from the repository root. Open `http://127.0.0.1:3000/operations` and sign in. This command only accepts the local FairGate database. Use the same command with `--role CUSTOMER` to revoke access. Changes affect existing sessions on their next operator request.
@@ -168,6 +176,9 @@ apps/api/
   src/operations.ts              Consistent seat totals and read-only Redis counts
   src/routes/operations.ts       Session and operator authorization
   prisma/set-operator.ts         Local account role grant/revoke command
+  scripts/local-traffic.ts       Bounded local burst, race, retries, and reports
+  scripts/traffic-metrics.ts     Local guard, worker pool, percentile calculations
+  tests/traffic-metrics.test.ts  Runner math, bounds, and failure-draining checks
   tests/operations.test.ts       Access, snapshot, expiry, and outage checks
   src/request-limits.ts          Shared rolling request allowances per account
   tests/request-limits.test.ts   Concurrent limit, expiry, and recovery checks

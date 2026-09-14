@@ -30,6 +30,8 @@
     "db:deploy": "npm run db:deploy --workspace @fairgate/api",
     "db:migrate": "npm run db:migrate --workspace @fairgate/api --",
     "db:seed": "npm run db:seed --workspace @fairgate/api",
-    "db:studio": "npm run db:studio --workspace @fairgate/api"
+    "db:studio": "npm run db:studio --workspace @fairgate/api",
+    "simulate:traffic": "npm run simulate:traffic --workspace @fairgate/api --",
+    "test:traffic": "npm run test:traffic --workspace @fairgate/api"
   }
 }

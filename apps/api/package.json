@@ -18,7 +18,9 @@
     "db:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "simulate:traffic": "prisma generate && tsx scripts/local-traffic.ts",
+    "test:traffic": "tsx --test tests/traffic-metrics.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
