@@ -23,7 +23,8 @@ export function AuthForm({ mode, returnTo = "/account" }: { mode: "register" | "
       <label>
         Password
         <input name="password" type="password" autoComplete={isRegistration ? "new-password" : "current-password"}
-          required aria-describedby={isRegistration ? "password-help" : undefined} />
+          required minLength={isRegistration ? 15 : undefined} maxLength={128}
+          aria-describedby={isRegistration ? "password-help" : undefined} />
       </label>
       {isRegistration && <p id="password-help" className="field-help">Use 15–128 characters. A long passphrase works well.</p>}
       {state.error && <p className="form-error" role="alert">{state.error}</p>}

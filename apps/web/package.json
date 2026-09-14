@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:ui": "tsx --test tests/waiting-room-view.test.ts",
     "dev": "next dev --hostname 127.0.0.1 --port 3000",
     "typecheck": "next typegen && tsc --noEmit",
     "build": "next build",
@@ -15,6 +16,7 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
+    "tsx": "^4.20.0",
     "@types/node": "^22.0.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

@@ -10,6 +10,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "test:ui": "npm run test:ui --workspace @fairgate/web",
     "dev": "npm run dev:api",
     "dev:api": "npm run dev --workspace @fairgate/api",
     "dev:web": "npm run dev --workspace @fairgate/web",
@@ -33,7 +34,7 @@
     "db:studio": "npm run db:studio --workspace @fairgate/api",
     "simulate:traffic": "npm run simulate:traffic --workspace @fairgate/api --",
     "test:traffic": "npm run test:traffic --workspace @fairgate/api",
-    "test": "npm run test:tracing && npm run test:traffic && npm run test:auth && npm run test:bookings && npm run test:waiting-room && npm run test:request-limits && npm run test:operations",
+    "test": "npm run test:ui && npm run test:tracing && npm run test:traffic && npm run test:auth && npm run test:bookings && npm run test:waiting-room && npm run test:request-limits && npm run test:operations",
     "check": "npm run typecheck && npm test && npm run build",
     "test:tracing": "npm run test:tracing --workspace @fairgate/api"
   }

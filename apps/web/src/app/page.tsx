@@ -9,7 +9,7 @@ export default async function MoviesPage() {
       <div className="page-heading">
         <p className="eyebrow">THE FILM GUIDE</p>
         <h1>Find your next film.</h1>
-        <p>Explore the stories. Check the showtimes.</p>
+        <p>Find a showtime, join the waiting room, and book a seat when it’s your turn.</p>
       </div>
       {movies.length === 0 ? (
         <section className="notice">
@@ -30,6 +30,15 @@ export default async function MoviesPage() {
           ))}
         </ul>
       )}
+      <section className="booking-guide" aria-labelledby="booking-guide-heading">
+        <div className="section-heading"><h2 id="booking-guide-heading">From showtime to your seat</h2></div>
+        <ol className="booking-steps">
+          <li><h3>Join the waiting room</h3><p>Sign in and join your show’s line. Keep the page open to keep your place.</p></li>
+          <li><h3>Choose your seat</h3><p>When your turn opens, you have up to two minutes to choose and confirm one seat.</p></li>
+          <li><h3>Find your ticket</h3><p>Your confirmation is saved in My bookings. This is a demo; no payment is collected.</p></li>
+        </ol>
+        <p className="field-help">A place in line or a selected seat is not a reservation. Your seat is yours once the booking is confirmed.</p>
+      </section>
     </>
   );
 }

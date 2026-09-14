@@ -33,24 +33,27 @@ export function BookingForm({ showId, seats, price, initialRequestId, enabled = 
       <input type="hidden" name="requestId" value={requestId} />
       <fieldset className="seat-fieldset" disabled={!enabled || pending || state.showStarted}>
         <legend>Choose one seat</legend>
-        <div className="seat-grid">
-          {seats.map((seat) => {
-            const available = seat.available && state.unavailableSeat !== seat.label;
-            return (
-              <label className="seat-choice" key={seat.label}>
-                <input type="radio" name="seatLabel" value={seat.label} required
-                  checked={selectedSeat === seat.label} disabled={!available}
-                  onChange={() => selectSeat(seat.label)}
-                  aria-label={`Seat ${seat.label}, ${available ? "available" : "booked"}`} />
-                <span className={available ? "seat" : "seat seat-booked"}>{seat.label}</span>
-              </label>
-            );
-          })}
+        <div className="seat-map-scroll" role="region" aria-label="Choose a cinema seat. Scroll horizontally if needed." tabIndex={0}>
+          <div className="seat-grid">
+            {seats.map((seat) => {
+              const available = seat.available && state.unavailableSeat !== seat.label;
+              return (
+                <label className="seat-choice" key={seat.label}>
+                  <input type="radio" name="seatLabel" value={seat.label} required
+                    checked={selectedSeat === seat.label} disabled={!available}
+                    onChange={() => selectSeat(seat.label)}
+                    aria-label={`Seat ${seat.label}, ${available ? "available" : "booked"}`} />
+                  <span className={available ? "seat" : "seat seat-booked"}>{seat.label}</span>
+                </label>
+              );
+            })}
+          </div>
         </div>
       </fieldset>
+      <p className="seat-scroll-hint">On a small screen, scroll across to see every seat.</p>
       <p className="seat-legend"><span>□ Available</span><span>■ Selected</span><span>× Booked</span></p>
       <div className="booking-summary">
-        <p aria-live="polite">{selectedSeat ? `Selected seat: ${selectedSeat}` : "Choose one seat to continue."}</p>
+        <p aria-live="polite">{selectedSeat ? selectedAvailable ? `Selected seat: ${selectedSeat}` : `Seat ${selectedSeat} is no longer available. Choose another seat.` : "Choose one seat to continue."}</p>
         <p>One demo ticket · {price}</p>
       </div>
       {state.error && (!state.seatLabel || state.seatLabel === selectedSeat) && (
