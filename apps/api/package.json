@@ -12,6 +12,8 @@
     "test:bookings": "prisma generate && tsx --test tests/bookings.test.ts",
     "test:waiting-room": "prisma generate && tsx --test tests/waiting-room.test.ts",
     "test:request-limits": "prisma generate && tsx --test tests/request-limits.test.ts",
+    "test:operations": "prisma generate && tsx --test tests/operations.test.ts",
+    "operator:set": "tsx prisma/set-operator.ts",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",

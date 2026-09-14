@@ -138,3 +138,17 @@ h3 { font-size: 1.125rem; }
   .seat { font-size: 0.7rem; min-height: 2.4rem; }
   .seating-panel { padding: 1rem; }
 }
+
+/* Operator snapshots remain usable on narrow screens and with keyboard scrolling. */
+.operations-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+.operations-toolbar p, .operations-note { color: var(--muted); font-size: 0.9rem; }
+.operations-note { margin-block: 1.25rem; }
+.operations-table-wrap { overflow-x: auto; margin-top: 1.5rem; border: 1px solid var(--border); border-radius: 0.5rem; background: white; }
+.operations-table-wrap:focus-visible { outline: 3px solid #bd5700; outline-offset: 3px; }
+.operations-table { border-collapse: collapse; width: 100%; min-width: 760px; }
+.operations-table caption { text-align: left; padding: 1rem; font-weight: 700; }
+.operations-table th, .operations-table td { border-top: 1px solid var(--border); text-align: left; padding: 1rem; vertical-align: top; }
+.operations-table thead { background: #e5f2ef; }
+.operations-table tbody th { min-width: 260px; }
+.operations-table tbody th span, .operations-table time { display: block; color: var(--muted); font-size: 0.85rem; font-weight: 400; }
+.operations-table td { font-variant-numeric: tabular-nums; }

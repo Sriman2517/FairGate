@@ -17,6 +17,8 @@
     "test:bookings": "npm run test:bookings --workspace @fairgate/api",
     "test:waiting-room": "npm run test:waiting-room --workspace @fairgate/api",
     "test:request-limits": "npm run test:request-limits --workspace @fairgate/api",
+    "test:operations": "npm run test:operations --workspace @fairgate/api",
+    "operator:set": "npm run operator:set --workspace @fairgate/api --",
     "typecheck": "npm run typecheck --workspaces",
     "build": "npm run build --workspaces",
     "start": "npm run start:api",

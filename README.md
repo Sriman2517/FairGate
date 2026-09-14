@@ -6,13 +6,15 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 8: shared request limits.**
+**Phase 9: operator dashboard.**
 
-Redis now enforces a shared rolling limit of 60 waiting-room requests and 20 new booking attempts per account per minute. Excess requests receive a retry delay that the page respects. Completed booking retries remain recoverable even when the allowance is exhausted.
+Operators can now open `/operations` to inspect upcoming shows, seat inventory, live waiting customers, and active checkout turns. The API checks a database-backed operator role on every request. Snapshot reads never advance a queue, and unavailable Redis counts are shown as unknown.
+
+Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new booking attempts per account per minute. Excess requests receive a retry delay that the page respects. Completed booking retries remain recoverable even when the allowance is exhausted.
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 8 learning guide](docs/phase-08-shared-request-limits.md). Earlier guides cover [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 9 learning guide](docs/phase-09-operator-dashboard.md). Earlier guides cover [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -73,6 +75,8 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | `npm run dev` | Shortcut for the API only. |
 | `npm run typecheck` | Generate required types and check both workspaces and all integration test files. |
 | `npm run build` | Generate Prisma Client, compile the API, and build the website. |
+| `npm run test:operations` | Test operator authorization, role changes, read-only snapshots, and degraded Redis responses. |
+| `npm run operator:set -- --email "your-email@example.com" --role OPERATOR` | Grant an existing local account operator access; use `CUSTOMER` to revoke. |
 | `npm run test:auth` | Run auth integration tests against local PostgreSQL. |
 | `npm run test:bookings` | Test admitted booking races, retry handling, and ownership using separate API processes. |
 | `npm run test:waiting-room` | Test FIFO order, shared capacity, expiry, and booking enforcement with real Redis and PostgreSQL. |
@@ -88,7 +92,7 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 
 Auth tests require the local database at `127.0.0.1:5433/fairgate` with migrations applied. They start their own API on a free port, create uniquely named synthetic accounts, and remove those accounts and their sessions afterward. They do not need the development servers. They check registration races, validation, login, isolation, expiration, revocation, database constraints, and throttling.
 
-Booking, waiting-room, and request-limit tests also require local Redis on port 6380, database 0, and use independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify seat and FIFO admission correctness, not production throughput. Tests clean only their own Redis keys.
+Booking, waiting-room, request-limit, and operations tests also require local Redis on port 6380, database 0, and use independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify seat and FIFO admission correctness, not production throughput. Tests clean only their own Redis keys.
 
 Generation and building require the API environment file but do not query a running database. Runtime requests and integration tests do. Stop an app before starting another on its port. PostgreSQL uses the `fairgate_postgres_data` Docker volume; removing that volume deletes its data and is not part of the normal workflow.
 
@@ -98,6 +102,7 @@ Base URL: `http://127.0.0.1:4000`. Authentication endpoints use JSON. Send `Auth
 
 | Method and path | Response |
 | --- | --- |
+| `GET /operations/shows` | Operator-only inventory and queue snapshot for the next 50 shows; `401` signed out, `403` customer. |
 | `GET /health` | `200` when the API process can answer; no database query. |
 | `GET /movies` | `200` with `{ "movies": [...] }`. |
 | `GET /movies/:movieId` | `200` with `{ "movie": {...} }`, or `404`. |
@@ -121,8 +126,13 @@ All booking endpoints require a valid session. New bookings also require an acti
 
 Queue joins and status checks share 60 attempts per account in a rolling 60 seconds across all sessions and shows. New validly shaped booking attempts have a separate allowance of 20 per rolling minute, including attempts that later fail. Excess requests return `429 TOO_MANY_REQUESTS` with `Retry-After` in seconds. Successful request-key replays run before this limit and remain recoverable.
 
+## Operator access
+
+Register an account first, then run `npm run operator:set -- --email "your-email@example.com" --role OPERATOR` from the repository root. Open `http://127.0.0.1:3000/operations` and sign in. This command only accepts the local FairGate database. Use the same command with `--role CUSTOMER` to revoke access. Changes affect existing sessions on their next operator request.
+
 ## Scope and limits
 
+- The operator dashboard is a manually refreshed snapshot of up to 50 upcoming shows, not historical telemetry. PostgreSQL counts use a consistent database transaction; Redis counts have their own observation time. These are not one atomic cross-store snapshot. The batched queue read uses the current standalone Redis deployment.
 - Request limits count attempts per account; they do not establish a per-person purchase limit or prevent bulk-account abuse. Authentication and completed-request lookups still precede the limit.
 - The website backs off on 429 responses. Cooldowns do not extend queue places or checkout turns, and multiple tabs share the same allowance.
 
@@ -132,7 +142,7 @@ Queue joins and status checks share 60 attempts per account in a rolling 60 seco
 
 - A seat map is a snapshot, so another customer can book a displayed seat before you confirm. PostgreSQL's unique constraint decides who succeeds. The page refreshes availability after a conflict.
 - A booking is one database insert with a stored price. Show metadata on its confirmation is read from the current catalogue. Show start time is checked during request handling, not locked to the exact insert commit time.
-- Email is an unverified identifier; email verification, password recovery, and roles are not implemented.
+- Email is an unverified identifier; email verification and password recovery are not implemented. All signups default to CUSTOMER. Only the local CLI can grant or revoke OPERATOR; no account is promoted automatically.
 - Sessions have an absolute seven-day lifetime. Logging out revokes the current session; other sign-ins stay valid. Expired database rows are rejected but are not automatically cleaned up yet.
 - Signup and login share a process-local limit of 60 attempts per backend IP per 15 minutes. Login also allows 10 attempts per normalized email per 15 minutes. Next.js forwards requests from its own IP, so the first limit is a shared demo safeguard. It resets on API restart and is not a distributed or per-visitor limit. Shared storage and trusted proxy configuration belong to a later phase.
 - Incorrect passwords and unknown emails return the same login message. Registration explicitly reports an existing email; this is not an account-enumeration-proof flow.
@@ -155,6 +165,10 @@ apps/api/
   src/db.ts                      Prisma client and PostgreSQL adapter
   src/redis.ts                   Shared Redis connection and bounded failure handling
   src/waiting-room.ts            Atomic FIFO admission and expiry
+  src/operations.ts              Consistent seat totals and read-only Redis counts
+  src/routes/operations.ts       Session and operator authorization
+  prisma/set-operator.ts         Local account role grant/revoke command
+  tests/operations.test.ts       Access, snapshot, expiry, and outage checks
   src/request-limits.ts          Shared rolling request allowances per account
   tests/request-limits.test.ts   Concurrent limit, expiry, and recovery checks
   src/routes/waiting-room.ts     Authenticated join and heartbeat endpoints
@@ -172,6 +186,8 @@ apps/web/src/
   app/actions/waiting-room.ts    Authenticated queue checks through Next.js
   lib/auth.ts                    Server-only account API calls
   lib/bookings.ts                Server-only booking and availability API calls
+  app/operations/page.tsx        Protected operator snapshot page
+  lib/operations.ts             Server-only operator API call
   lib/api.ts                     Server-only catalogue API calls
 docs/                            Learning guide for each phase
 AGENTS.md                        Phase and commit agreement

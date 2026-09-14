@@ -13,6 +13,11 @@ enum Currency {
   INR
 }
 
+enum UserRole {
+  CUSTOMER
+  OPERATOR
+}
+
 model Movie {
   id              String @id
   title           String
@@ -34,6 +39,7 @@ model Show {
   seats        ShowSeat[]
 
   @@index([movieId, startsAt])
+  @@index([startsAt, id])
 }
 
 model User {
@@ -41,6 +47,7 @@ model User {
   name         String
   email        String    @unique
   passwordHash String
+  role         UserRole  @default(CUSTOMER)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   sessions     Session[]
   bookings     Booking[]

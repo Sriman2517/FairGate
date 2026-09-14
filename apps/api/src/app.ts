@@ -7,6 +7,7 @@ import { waitingRoomRouter } from "./routes/waiting-room.js";
 import { WaitingRoomUnavailable } from "./redis.js";
 import { WaitingRoomClosed, WaitingRoomFull } from "./waiting-room.js";
 import { RequestLimitExceeded } from "./request-limits.js";
+import { operationsRouter } from "./routes/operations.js";
 
 export const app = express();
 
@@ -16,7 +17,7 @@ app.get("/health", (_request, response) => {
 
 app.use("/movies", moviesRouter);
 // Availability and customer-specific data must be fetched fresh, including errors.
-app.use(["/auth", "/shows", "/bookings", "/waiting-room"], (_request, response, next) => {
+app.use(["/auth", "/shows", "/bookings", "/waiting-room", "/operations"], (_request, response, next) => {
   response.set("Cache-Control", "no-store");
   next();
 });
@@ -24,6 +25,7 @@ app.use("/auth", express.json({ limit: "4kb", strict: false }), authRouter);
 app.use("/shows", showsRouter);
 app.use("/bookings", express.json({ limit: "4kb", strict: false }), bookingsRouter);
 app.use("/waiting-room", waitingRoomRouter);
+app.use("/operations", operationsRouter);
 
 const handleError: ErrorRequestHandler = (error, _request, response, next) => {
   if (response.headersSent) {
