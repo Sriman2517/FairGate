@@ -9,13 +9,28 @@ import { WaitingRoomUnavailable } from "./redis.js";
 import { WaitingRoomClosed, WaitingRoomFull } from "./waiting-room.js";
 import { RequestLimitExceeded } from "./request-limits.js";
 import { operationsRouter } from "./routes/operations.js";
+import { AuthLimitExceeded, AuthUnavailable } from "./auth/limits.js";
+import { createReadiness } from "./readiness.js";
+import { lifecycle } from "./lifecycle.js";
+import { prisma } from "./db.js";
+import { runRedis } from "./redis.js";
 
 export const app = express();
+app.disable("x-powered-by");
 app.use(requestLogging());
+app.use((_request, response, next) => {
+  if (lifecycle.draining) {
+    response.set("Cache-Control", "no-store").set("Connection", "close").set("Retry-After", "5")
+      .status(503).json({ error: { code: "SERVER_DRAINING", message: "Please retry shortly." } });
+    return;
+  }
+  next();
+});
 
 app.get("/health", (_request, response) => {
-  response.status(200).json({ status: "ok", service: "fairgate-api" });
+  response.set("Cache-Control", "no-store").status(200).json({ status: "ok", service: "fairgate-api" });
 });
+app.get("/ready", createReadiness({ database: () => prisma.$queryRaw`SELECT 1`, redis: () => runRedis((connection) => connection.ping()) }, () => lifecycle.draining));
 
 app.use("/movies", logRouteGroup("/movies"), moviesRouter);
 // Availability and customer-specific data must be fetched fresh, including errors.
@@ -32,6 +47,16 @@ app.use("/operations", logRouteGroup("/operations"), operationsRouter);
 const handleError: ErrorRequestHandler = (error, _request, response, next) => {
   if (response.headersSent) {
     next(error);
+    return;
+  }
+  if (error instanceof AuthLimitExceeded) {
+    response.set("Retry-After", String(error.retryAfterSeconds)).status(429).json({
+      error: { code: "TOO_MANY_ATTEMPTS", message: `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.` },
+    });
+    return;
+  }
+  if (error instanceof AuthUnavailable) {
+    response.set("Retry-After", "5").status(503).json({ error: { code: "AUTH_UNAVAILABLE", message: "Sign-in is temporarily unavailable. Please try again shortly." } });
     return;
   }
   if (error instanceof WaitingRoomUnavailable) {

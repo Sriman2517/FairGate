@@ -6,7 +6,9 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 14: clearer booking screens and mobile controls.**
+**Phase 15: deployment readiness.**
+
+The API accepts deployment HOST/PORT settings, exposes `/ready` for PostgreSQL/Redis checks, and drains active requests on shutdown. Shared Redis budgets now protect login and registration across API replicas. Production website calls require an explicit API origin. This phase prepares deployment; it does not publish the app.
 
 The homepage explains the three booking steps. Page navigation has a loading fallback; waiting, admission, expiry, and unavailable checks have distinct messages. Seat maps keep eight columns with touch-sized controls and horizontal scrolling on narrow screens. Closed shows offer a direct link to other showtimes. See the Phase 14 guide for the browser review checklist.
 
@@ -24,7 +26,7 @@ Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new boo
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 14 learning guide](docs/phase-14-frontend-polish.md). Earlier guides cover [request tracing](docs/phase-13-request-tracing.md), [automated checks](docs/phase-12-automated-checks.md), [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 15 learning guide](docs/phase-15-deployment-readiness.md). Earlier guides cover [frontend polish](docs/phase-14-frontend-polish.md), [request tracing](docs/phase-13-request-tracing.md), [automated checks](docs/phase-12-automated-checks.md), [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -73,9 +75,9 @@ Open `http://127.0.0.1:3000`, choose a film and show, then open its seat map. Si
 
 Accounts use a demo email and a unique passphrase of 15–128 characters. Email is not sent or verified. Next.js keeps the session token in an HttpOnly cookie; the API stores its digest in PostgreSQL and checks its seven-day expiry.
 
-The API and PostgreSQL must be available for catalogue and account requests. Redis is also required for the waiting room and new bookings. It runs at `127.0.0.1:6380`; the API uses that default or an optional `REDIS_URL` override. The website uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart Next.js.
+The API and PostgreSQL must be available for catalogue and account requests. Redis is also required for new login/registration, the waiting room, and new bookings. Existing session reads and logout remain independent of Redis. It runs at `127.0.0.1:6380`; the API uses that default or an optional `REDIS_URL` override. The website uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart Next.js.
 
-Use the development commands for local HTTP testing. Production mode sets a `Secure` session cookie and requires HTTPS at the browser. Deployments must also protect the connection to the API. HTTPS hosting and deployment configuration are outside this phase.
+Use the development commands for local HTTP testing. Production mode sets a `Secure` session cookie and requires HTTPS at the browser. Deployments must also protect the connection to the API. Phase 15 validates runtime configuration; HTTPS hosting and live deployment are planned for Phase 16. See its guide before running production start commands. The website requires FAIRGATE_API_URL in production; private HTTP requires an explicit FAIRGATE_ALLOW_HTTP_API=true opt-in.
 
 ## Commands
 
@@ -84,14 +86,15 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | `npm run dev:api` / `npm run dev:web` | Run the API / website in development. |
 | `npm run dev` | Shortcut for the API only. |
 | `npm run check` | Run type checks, all test suites, and the production build; stop on failure. Services and migrations must be ready. |
-| `npm test` | Run all eight test suites sequentially. |
+| `npm test` | Run all nine test commands sequentially. |
 | `npm run typecheck` | Generate required types and check both workspaces and all integration test files. |
 | `npm run build` | Generate Prisma Client, compile the API, and build the website. |
 | `npm run simulate:traffic -- --customers 100 --concurrency 20` | Run a local burst, seat race, and retry experiment; save a report. |
 | `npm run test:traffic` | Test experiment bounds, metrics, concurrency, and failure draining without databases. |
 | `npm run test:operations` | Test operator authorization, role changes, read-only snapshots, and degraded Redis responses. |
 | `npm run operator:set -- --email "your-email@example.com" --role OPERATOR` | Grant an existing local account operator access; use `CUSTOMER` to revoke. |
-| `npm run test:ui` | Test checkout display states, expiry boundaries, and recovery without databases. |
+| `npm run test:ui` | Test checkout display states and production API-origin configuration without databases. |
+| `npm run test:runtime` | Test startup configuration, readiness, shutdown, and shared authentication limits. |
 | `npm run test:tracing` | Test request IDs, safe log fields, errors, parallel calls, and disconnected responses without databases. |
 | `npm run test:auth` | Run auth integration tests against local PostgreSQL. |
 | `npm run test:bookings` | Test admitted booking races, retry handling, and ownership using separate API processes. |
@@ -106,7 +109,7 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 | `npm run db:seed` | Insert missing demo movies, shows, and seat inventory. |
 | `npm run db:studio` | Inspect local database records in Prisma Studio. |
 
-Auth tests require the local database at `127.0.0.1:5433/fairgate` with migrations applied. They start their own API on a free port, create uniquely named synthetic accounts, and remove those accounts and their sessions afterward. They do not need the development servers. They check registration races, validation, login, isolation, expiration, revocation, database constraints, and throttling.
+Auth tests require the local database at `127.0.0.1:5433/fairgate` with migrations applied. They start their own API on a free port, create uniquely named synthetic accounts, and remove those accounts and their sessions afterward. They do not need the development servers. Auth tests now also require local Redis and isolate their budgets with a unique AUTH_LIMIT_NAMESPACE. They check registration races, validation, login, isolation, expiration, revocation, database constraints, and throttling.
 
 Booking, waiting-room, request-limit, and operations tests also require local Redis on port 6380, database 0, and use independent API processes on free ports. They create their own fixture movies, shows, seats, and customers, then remove only those fixtures in dependency order. The concurrent-request checks verify seat and FIFO admission correctness, not production throughput. Tests clean only their own Redis keys.
 
@@ -120,6 +123,7 @@ Base URL: `http://127.0.0.1:4000`. Authentication endpoints use JSON. Send `Auth
 | --- | --- |
 | `GET /operations/shows` | Operator-only inventory and queue snapshot for the next 50 shows; `401` signed out, `403` customer. |
 | `GET /health` | `200` when the API process can answer; no database query. |
+| `GET /ready` | `200` only when PostgreSQL and Redis probes pass; otherwise `503`. |
 | `GET /movies` | `200` with `{ "movies": [...] }`. |
 | `GET /movies/:movieId` | `200` with `{ "movie": {...} }`, or `404`. |
 | `GET /movies/:movieId/shows` | `200` with `{ "shows": [...] }`, or `404`. |
@@ -137,7 +141,7 @@ Base URL: `http://127.0.0.1:4000`. Authentication endpoints use JSON. Send `Auth
 
 A public user contains only `id`, `name`, and `email`. Registration/login return `session.token` and `session.expiresAt` to the Next.js server. Never copy these tokens into screenshots, logs, URLs, or commits. All auth responses use `Cache-Control: no-store`.
 
-Auth errors include `400 INVALID_INPUT`, `400 INVALID_JSON`, `401 INVALID_CREDENTIALS`, `401 UNAUTHENTICATED`, `409 EMAIL_IN_USE`, `413 PAYLOAD_TOO_LARGE`, and `429 TOO_MANY_ATTEMPTS`. Unexpected failures return `500 INTERNAL_SERVER_ERROR` without database details. A healthy `/health` response does not prove PostgreSQL is reachable.
+Auth errors include `400 INVALID_INPUT`, `400 INVALID_JSON`, `401 INVALID_CREDENTIALS`, `401 UNAUTHENTICATED`, `409 EMAIL_IN_USE`, `413 PAYLOAD_TOO_LARGE`, and `429 TOO_MANY_ATTEMPTS`. Unexpected failures return `500 INTERNAL_SERVER_ERROR` without database details. A healthy `/health` response does not prove PostgreSQL is reachable. `/ready` checks both storage dependencies. New sign-in/registration returns `503 AUTH_UNAVAILABLE` if shared limiting is unavailable, while auth throttling returns `429 TOO_MANY_ATTEMPTS` with Retry-After.
 
 All booking endpoints require a valid session. New bookings also require an active checkout turn, otherwise `403 ADMISSION_REQUIRED`. Redis failure returns `503 WAITING_ROOM_UNAVAILABLE` for new bookings; successful request-key replays still work. A taken seat receives `409 SEAT_UNAVAILABLE`; reusing one request ID for a different show/seat receives `409 REQUEST_ID_REUSED`. A new booking for a show that has started receives `409 SHOW_STARTED`; successful retries still return their original booking. Nonexistent inventory receives `404 SEAT_NOT_FOUND`. The server derives the customer and amount rather than trusting request fields. Availability and booking responses use `Cache-Control: no-store`.
 
@@ -170,7 +174,7 @@ Use `curl.exe -i http://127.0.0.1:4000/health` to see an `X-Request-ID`, then fi
 - A booking is one database insert with a stored price. Show metadata on its confirmation is read from the current catalogue. Show start time is checked during request handling, not locked to the exact insert commit time.
 - Email is an unverified identifier; email verification and password recovery are not implemented. All signups default to CUSTOMER. Only the local CLI can grant or revoke OPERATOR; no account is promoted automatically.
 - Sessions have an absolute seven-day lifetime. Logging out revokes the current session; other sign-ins stay valid. Expired database rows are rejected but are not automatically cleaned up yet.
-- Signup and login share a process-local limit of 60 attempts per backend IP per 15 minutes. Login also allows 10 attempts per normalized email per 15 minutes. Next.js forwards requests from its own IP, so the first limit is a shared demo safeguard. It resets on API restart and is not a distributed or per-visitor limit. Shared storage and trusted proxy configuration belong to a later phase.
+- Login allows 10 accepted attempts per normalized email per 15-minute fixed window; registration allows 5 separately. Both share a deployment-wide 120-attempt one-minute fixed window in Redis before password work. All API replicas must share Redis and AUTH_LIMIT_NAMESPACE. These demo budgets count successes and failures, ignore forwarded IP headers, and survive API restarts while Redis retains data. They are not per-person abuse protection; an attacker can still exhaust an email or shared service budget. Provider edge controls and capacity tuning belong to deployment setup.
 - Incorrect passwords and unknown emails return the same login message. Registration explicitly reports an existing email; this is not an account-enumeration-proof flow.
 
 ## Repository layout
@@ -182,7 +186,11 @@ apps/api/
   prisma/schema.prisma           Catalogue, customer, session, seat, and booking models
   prisma/migrations/             Additive SQL history
   prisma/seed.ts                 Repeatable catalogue inserts
-  src/app.ts                     Route registration, JSON parser, error handling
+  src/config.ts                  Validated deployment ports, service URLs, and auth namespace
+  src/server.ts                  Listener, HTTP timeouts, and termination signals
+  src/lifecycle.ts               Bounded request draining and resource cleanup
+  src/readiness.ts               Shared dependency probes with response deadlines
+  src/app.ts                     Route registration, health checks, and error handling
   src/request-logging.ts         Request IDs and structured response lifecycle logs
   tests/request-logging.test.ts  HTTP tracing and sensitive-input exclusion checks
   src/auth/                      Input validation, password hashing, sessions
@@ -223,6 +231,8 @@ apps/web/src/
   app/operations/page.tsx        Protected operator snapshot page
   lib/operations.ts             Server-only operator API call
   lib/api.ts                     Server-only catalogue API calls
+  lib/api-request.ts             Shared server-only fetch policy
+  lib/api-origin.ts              Production API-origin validation
 apps/web/tests/                  Display-state boundary and recovery tests
 docs/                            Learning guide for each phase
 AGENTS.md                        Phase and commit agreement

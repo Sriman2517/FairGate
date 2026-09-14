@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
+import { apiRequest } from "./api-request";
 
 export interface Customer {
   id: string;
@@ -13,15 +14,10 @@ export interface AuthResult {
 }
 
 export const sessionCookie = "fairgate_session";
-const apiUrl = process.env.FAIRGATE_API_URL ?? "http://127.0.0.1:4000";
 
 // Only the Next.js server calls this helper; the token never becomes a client prop.
 export function authRequest(path: string, options: RequestInit = {}) {
-  return fetch(new URL(`/auth/${path}`, apiUrl), {
-    ...options,
-    cache: "no-store",
-    signal: AbortSignal.timeout(5000),
-  });
+  return apiRequest(`/auth/${path}`, options);
 }
 
 export async function getCurrentUser(): Promise<Customer | null> {

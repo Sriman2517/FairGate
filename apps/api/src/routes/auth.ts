@@ -1,40 +1,21 @@
-import { createHash } from "node:crypto";
 import { Router } from "express";
-import { rateLimit } from "express-rate-limit";
 import { prisma } from "../db.js";
 import { Prisma } from "../generated/prisma/client.js";
 import { hashPassword, verifyPassword } from "../auth/passwords.js";
 import { bearerToken, currentUser, newSession, publicUserFields, tokenDigest } from "../auth/sessions.js";
 import { readCredentials, readRegistration } from "../auth/validation.js";
+import { enforceAuthLimit } from "../auth/limits.js";
 
 export const authRouter = Router();
 
-const limitOptions = {
-  windowMs: 15 * 60 * 1000,
-  standardHeaders: "draft-8" as const,
-  legacyHeaders: false,
-  message: { error: { code: "TOO_MANY_ATTEMPTS", message: "Too many attempts. Please try again later." } },
-};
-
-// Next.js shares one backend IP. This is a coarse process-local safeguard,
-// not a visitor-specific or distributed rate limiter.
-const authAttempts = rateLimit({ ...limitOptions, limit: 60 });
-const accountAttempts = rateLimit({
-  ...limitOptions,
-  limit: 10,
-  keyGenerator: (request) => {
-    const email = typeof request.body?.email === "string" ? request.body.email.trim().toLowerCase() : "";
-    return createHash("sha256").update(email).digest("hex");
-  },
-});
-
-authRouter.post("/register", authAttempts, async (request, response) => {
+authRouter.post("/register", async (request, response) => {
   const input = readRegistration(request.body);
   if (!input) {
     response.status(400).json({ error: { code: "INVALID_INPUT", message: "Use a name of 1–80 characters, a valid email, and a password of 15–128 characters." } });
     return;
   }
 
+  await enforceAuthLimit("register", input.email);
   const passwordHash = await hashPassword(input.password);
   const session = newSession();
   try {
@@ -56,13 +37,14 @@ authRouter.post("/register", authAttempts, async (request, response) => {
   }
 });
 
-authRouter.post("/login", authAttempts, accountAttempts, async (request, response) => {
+authRouter.post("/login", async (request, response) => {
   const input = readCredentials(request.body);
   if (!input) {
     response.status(400).json({ error: { code: "INVALID_INPUT", message: "Enter a valid email and password." } });
     return;
   }
 
+  await enforceAuthLimit("login", input.email);
   const user = await prisma.user.findUnique({ where: { email: input.email } });
   const validPassword = await verifyPassword(input.password, user?.passwordHash ?? null);
   if (!user || !validPassword) {

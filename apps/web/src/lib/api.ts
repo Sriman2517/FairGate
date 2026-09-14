@@ -1,4 +1,5 @@
 import "server-only";
+import { apiRequest } from "./api-request";
 
 // These describe the API's JSON contract, not runtime validation.
 export interface Movie {
@@ -19,14 +20,7 @@ export interface Show {
   currency: "INR";
 }
 
-const apiUrl = process.env.FAIRGATE_API_URL ?? "http://127.0.0.1:4000";
-
-function request(path: string) {
-  return fetch(new URL(path, apiUrl), {
-    cache: "no-store",
-    signal: AbortSignal.timeout(5000),
-  });
-}
+const request = apiRequest;
 
 export async function getMovies(): Promise<Movie[]> {
   const response = await request("/movies");

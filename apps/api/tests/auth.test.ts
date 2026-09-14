@@ -15,15 +15,22 @@ if (
   throw new Error("Auth tests require the local PostgreSQL database at 127.0.0.1:5433/fairgate.");
 }
 
-// Import the application only after checking which database it will connect to.
+const redisUrl = new URL(process.env.REDIS_URL ?? "redis://127.0.0.1:6380");
+if (redisUrl.protocol !== "redis:" || redisUrl.hostname !== "127.0.0.1" || redisUrl.port !== "6380" || !["", "/", "/0"].includes(redisUrl.pathname)) {
+  throw new Error("Auth tests require local Redis at 127.0.0.1:6380/0.");
+}
+process.env.AUTH_LIMIT_NAMESPACE = `auth-test-${randomUUID()}`;
+// Import only after selecting an isolated limiter namespace and local services.
 const { app } = await import("../src/app.js");
 const { prisma } = await import("../src/db.js");
+const { getRedis, closeRedis } = await import("../src/redis.js");
+const { authLimitKeys, authLimits } = await import("../src/auth/limits.js");
 const digest = (token: string) => createHash("sha256").update(token).digest("hex");
 
 test("customer authentication against local PostgreSQL", async (t) => {
   const server = app.listen(0, "127.0.0.1");
   const runId = randomUUID();
-  const emails = ["first", "second", "race", "throttle"].map(
+  const emails = ["first", "second", "race", "throttle", "register-limit"].map(
     (label) => `${label}-${runId}@fairgate.test`,
   );
   const createdUserIds = new Set<string>();
@@ -172,25 +179,19 @@ test("customer authentication against local PostgreSQL", async (t) => {
       } }), { code: "P2003" });
     });
 
-    // Keep throttling last: these counters intentionally persist for this API process.
-    await t.test("login email and shared process limits reject repeated attempts", async () => {
+    // Keep throttling last; use only the isolated test Redis namespace.
+    await t.test("shared login, registration, and service budgets reject repeated attempts", async () => {
       for (let attempt = 0; attempt < 10; attempt++) {
         expectError(await post("/auth/login", { email: emails[3], password }), 401, "INVALID_CREDENTIALS");
       }
       const limited = await post("/auth/login", { email: emails[3].toUpperCase(), password });
       expectError(limited, 429, "TOO_MANY_ATTEMPTS");
       assert.ok(Number(limited.headers.get("retry-after")) > 0);
-      let sawProcessLimit = false;
-      for (let attempt = 0; attempt < 65; attempt++) {
-        const result = await post("/auth/register", {});
-        if (result.status === 429) {
-          expectError(result, 429, "TOO_MANY_ATTEMPTS");
-          sawProcessLimit = true;
-          break;
-        }
-        expectError(result, 400, "INVALID_INPUT");
-      }
-      assert.equal(sawProcessLimit, true);
+      assert.equal((await register(emails[4])).status, 201);
+      for (let i = 1; i < authLimits.register; i++) expectError(await register(emails[4]), 409, "EMAIL_IN_USE");
+      expectError(await register(emails[4].toUpperCase()), 429, "TOO_MANY_ATTEMPTS");
+      await (await getRedis()).set(authLimitKeys("login", emails[0])[0], String(authLimits.service), { PX: 60000 });
+      expectError(await post("/auth/login", { email: emails[0], password }), 429, "TOO_MANY_ATTEMPTS");
       assert.equal((await authenticated("/auth/me", loginToken)).status, 200);
       assert.equal((await authenticated("/auth/logout", loginToken, "POST")).status, 204);
     });
@@ -200,8 +201,10 @@ test("customer authentication against local PostgreSQL", async (t) => {
       const ownUsers = await prisma.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
       for (const user of ownUsers) createdUserIds.add(user.id);
       await prisma.user.deleteMany({ where: { id: { in: [...createdUserIds] } } });
+      await (await getRedis()).del([...new Set(emails.flatMap((email) => [...authLimitKeys("login", email), ...authLimitKeys("register", email)]))]);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      await closeRedis();
       await prisma.$disconnect();
     }
   }

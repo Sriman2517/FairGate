@@ -1,9 +1,9 @@
-import "dotenv/config";
+import { readApiConfig } from "./config.js";
 import { createClient } from "redis";
 
 function makeConnection() {
   return createClient({
-    url: process.env.REDIS_URL ?? "redis://127.0.0.1:6380",
+    url: readApiConfig().redisUrl,
     socket: { connectTimeout: 1500, reconnectStrategy: false },
     disableOfflineQueue: true,
     commandsQueueMaxLength: 1000,

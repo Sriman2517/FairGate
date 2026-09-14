@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test:ui": "tsx --test tests/waiting-room-view.test.ts",
+    "test:ui": "tsx --test tests/waiting-room-view.test.ts tests/api-origin.test.ts",
     "dev": "next dev --hostname 127.0.0.1 --port 3000",
     "typecheck": "next typegen && tsc --noEmit",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1 --port 3000"
+    "start": "next start --hostname 0.0.0.0"
   },
   "dependencies": {
     "next": "16.3.5",

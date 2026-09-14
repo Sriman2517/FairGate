@@ -13,6 +13,8 @@ if (!["postgres:", "postgresql:"].includes(database.protocol) || database.hostna
   redisUrl.hostname !== "127.0.0.1" || redisUrl.port !== "6380" || !["", "/", "/0"].includes(redisUrl.pathname)) {
   throw new Error("Operations tests require local PostgreSQL at 127.0.0.1:5433/fairgate and Redis at 127.0.0.1:6380/0.");
 }
+process.env.AUTH_LIMIT_NAMESPACE = `ops-test-${randomUUID()}`;
+const { authLimitKeys } = await import("../src/auth/limits.js");
 const { prisma } = await import("../src/db.js");
 const { getRedis, closeRedis } = await import("../src/redis.js");
 const { waitingRoomKeys } = await import("../src/waiting-room.js");
@@ -177,6 +179,7 @@ test("operator snapshots and authorization", async (t) => {
       await prisma.showSeat.deleteMany({ where: { showId: { in: showIds } } });
       await prisma.show.deleteMany({ where: { id: { in: showIds } } });
       await prisma.movie.deleteMany({ where: { id: movieId } });
+      await (await getRedis()).del(authLimitKeys("register", signupEmail));
       await prisma.user.deleteMany({ where: { email: { in: [...users.map((user) => user.email), signupEmail] } } });
       await (await getRedis()).del([...showIds.flatMap(waitingRoomKeys), ...users.flatMap(({ id }) => [requestLimitKey(id, "waiting-room"), requestLimitKey(id, "booking")])]);
     } finally { await closeRedis(); await prisma.$disconnect(); }

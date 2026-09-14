@@ -21,7 +21,8 @@
     "db:studio": "prisma studio",
     "simulate:traffic": "prisma generate && tsx scripts/local-traffic.ts",
     "test:traffic": "tsx --test tests/traffic-metrics.test.ts",
-    "test:tracing": "tsx --test tests/request-logging.test.ts"
+    "test:tracing": "tsx --test tests/request-logging.test.ts",
+    "test:runtime": "prisma generate && tsx --test tests/runtime.test.ts tests/auth-limits.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
@@ -29,7 +30,6 @@
     "argon2": "0.44.0",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
-    "express-rate-limit": "8.7.0",
     "redis": "6.2.1"
   },
   "devDependencies": {
