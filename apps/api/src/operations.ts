@@ -29,7 +29,7 @@ export async function getOperationsSnapshot() {
         movie: { select: { title: true } }, _count: { select: { seats: true } } },
     });
     const shows = upcoming.slice(0, operationsShowLimit);
-    const bookings = await tx.booking.groupBy({ by: ["showId"],
+    const bookings = await tx.bookingSeat.groupBy({ by: ["showId"],
       where: { showId: { in: shows.map((show) => show.id) } }, _count: { _all: true } });
     const bookedByShow = new Map(bookings.map((booking) => [booking.showId, booking._count._all]));
     return { hasMore: upcoming.length > operationsShowLimit, shows: shows.map((show) => {

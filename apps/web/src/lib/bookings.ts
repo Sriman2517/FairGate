@@ -13,6 +13,7 @@ export interface Seat {
 export interface BookingShow {
   movieId: string;
   movieTitle: string;
+  posterPath?: string | null;
   cinemaName: string;
   screenName: string;
   startsAt: string;
@@ -28,6 +29,8 @@ export interface Booking {
   id: string;
   showId: string;
   seatLabel: string;
+  seatLabels: string[];
+  seats: { seatLabel: string; priceInPaise: number }[];
   priceInPaise: number;
   currency: "INR";
   createdAt: string;

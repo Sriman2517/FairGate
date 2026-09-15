@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { authRequest, sessionCookie, type AuthResult } from "../../lib/auth";
+import { bookingIntentCookie, enterBooking } from "../../lib/booking-intent";
 import { safeReturnTo } from "../../lib/return-to";
 
 export type AuthState = { error: string };
@@ -42,7 +43,14 @@ async function authenticate(kind: "register" | "login", formData: FormData): Pro
   }
 
   // redirect() throws a Next.js control-flow signal, so keep it outside the catch.
-  redirect(safeReturnTo(formData.get("returnTo")));
+  const destination = safeReturnTo(formData.get("returnTo"));
+  const store = await cookies();
+  const intent = store.get(bookingIntentCookie)?.value;
+  store.delete(bookingIntentCookie);
+  if (intent && /^[A-Za-z0-9-]{1,120}$/.test(intent) && destination === `/shows/${intent}`) {
+    redirect(await enterBooking(intent));
+  }
+  redirect(destination);
 }
 
 export async function register(_previousState: AuthState, formData: FormData): Promise<AuthState> {

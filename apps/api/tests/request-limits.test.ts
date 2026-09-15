@@ -141,9 +141,9 @@ test("shared rolling request limits", async (t) => {
       await room(3, 0, true, otherShow);
       const key = randomUUID();
       const created = await book(3, key, "A1", 0, otherShow); assert.equal(created.status, 201);
-      // New intentions count even when the chosen seat is already booked.
+      // New intentions count even after confirmation has released the turn.
       const attempts = await Promise.all(Array.from({ length: 19 }, () => book(3, randomUUID(), "A1", 1, otherShow)));
-      assert.ok(attempts.every((result) => result.status === 409 && result.body.error.code === "SEAT_UNAVAILABLE"));
+      assert.ok(attempts.every((result) => result.status === 403 && result.body.error.code === "ADMISSION_REQUIRED"));
       limited(await book(3, randomUUID(), "A2", 1, otherShow));
       const replay = await book(3, key, "A1", 1, otherShow);
       assert.equal(replay.status, 200); assert.equal(replay.body.booking.id, created.body.booking.id);

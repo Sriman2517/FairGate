@@ -8,6 +8,9 @@ export interface Movie {
   synopsis: string;
   language: string;
   durationMinutes: number;
+  posterPath?: string | null;
+  genre?: string | null;
+  featured?: boolean;
 }
 
 export interface Show {

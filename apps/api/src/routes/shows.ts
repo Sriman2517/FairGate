@@ -7,7 +7,7 @@ showsRouter.get("/:showId", async (request, response) => {
   const show = await prisma.show.findUnique({
     where: { id: request.params.showId },
     select: {
-      id: true, movieId: true, movie: { select: { title: true } },
+      id: true, movieId: true, movie: { select: { title: true, posterPath: true } },
       cinemaName: true, screenName: true, startsAt: true, priceInPaise: true, currency: true,
       seats: {
         orderBy: [{ row: "asc" }, { number: "asc" }],
@@ -22,7 +22,7 @@ showsRouter.get("/:showId", async (request, response) => {
 
   response.status(200).json({
     show: {
-      id: show.id, movieId: show.movieId, movieTitle: show.movie.title,
+      id: show.id, movieId: show.movieId, movieTitle: show.movie.title, posterPath: show.movie.posterPath,
       cinemaName: show.cinemaName, screenName: show.screenName, startsAt: show.startsAt,
       priceInPaise: show.priceInPaise, currency: show.currency,
     },

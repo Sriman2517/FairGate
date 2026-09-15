@@ -1,3 +1,4 @@
+import { MoviePoster } from "../../components/movie-poster";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthenticationRequired, getBookings, type Booking } from "../../lib/bookings";
@@ -31,13 +32,13 @@ export default async function BookingsPage() {
         <ul className="show-list" aria-label="Your bookings">
           {bookings.map((booking) => (
             <li className="show-row" key={booking.id}>
-              <div>
+              <div className="booking-list-film"><div className="booking-list-poster"><MoviePoster title={booking.show.movieTitle} path={booking.show.posterPath} /></div><div>
                 <h2 className="booking-movie-title">{booking.show.movieTitle}</h2>
-                <p className="screen-name">{booking.show.cinemaName} · {booking.show.screenName} · Seat {booking.seatLabel}</p>
-                <p><time dateTime={booking.show.startsAt}>{formatShowTime(booking.show.startsAt)}</time> (IST)</p>
+                <p className="screen-name">{booking.show.cinemaName} · {booking.show.screenName} · Seats {booking.seatLabels.join(", ")}</p>
+                <p><time dateTime={booking.show.startsAt}>{formatShowTime(booking.show.startsAt)}</time> (IST)</p></div>
               </div>
               <div className="show-booking-link">
-                <p className="ticket-price">{formatPrice(booking.priceInPaise)}<span>demo ticket amount</span></p>
+                <p className="ticket-price">{formatPrice(booking.priceInPaise)}<span>total demo amount</span></p>
                 <Link href={`/bookings/${encodeURIComponent(booking.id)}`}>View booking</Link>
               </div>
             </li>

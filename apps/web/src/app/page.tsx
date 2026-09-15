@@ -1,44 +1,41 @@
 import Link from "next/link";
 import { getMovies } from "../lib/api";
+import { MoviePoster } from "../components/movie-poster";
 
 export default async function MoviesPage() {
-  const movies = await getMovies();
-
-  return (
-    <>
-      <div className="page-heading">
-        <p className="eyebrow">THE FILM GUIDE</p>
-        <h1>Find your next film.</h1>
-        <p>Find a showtime, join the waiting room, and book a seat when it’s your turn.</p>
+  const allMovies = await getMovies();
+  const featured = allMovies.filter((movie) => movie.featured);
+  const movies = featured.length ? featured : allMovies;
+  const hero = movies.find((movie) => movie.id === "interstellar") ?? movies[0];
+  return <>
+    {hero && <section className="cinema-hero" aria-labelledby="hero-heading">
+      <div className="hero-copy">
+        <p className="eyebrow">THE BIG SCREEN COLLECTION</p>
+        <h1 id="hero-heading">Some stories deserve<br /><em>a bigger screen.</em></h1>
+        <p>A little escape. A great film. Your favourite seats.<br />Make your next movie night one to remember.</p>
+        <Link className="button" href={`/movies/${hero.id}`}>Explore {hero.title}<span aria-hidden="true">↗</span></Link>
+        <span className="hero-caption">SPECIAL SCREENINGS · FAIRGATE DEMO CINEMA</span>
       </div>
-      {movies.length === 0 ? (
-        <section className="notice">
-          <h2>No movies listed yet</h2>
-          <p>Please check back later for new listings.</p>
-        </section>
-      ) : (
-        <ul className="movie-grid" aria-label="Movies">
-          {movies.map((movie) => (
-            <li className="movie-card" key={movie.id}>
-              <p className="movie-meta">{movie.language} · {movie.durationMinutes} min</p>
-              <h2>{movie.title}</h2>
-              <p className="synopsis">{movie.synopsis}</p>
-              <Link className="button" href={`/movies/${movie.id}`} aria-label={`View showtimes for ${movie.title}`}>
-                View showtimes <span aria-hidden="true">→</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      <section className="booking-guide" aria-labelledby="booking-guide-heading">
-        <div className="section-heading"><h2 id="booking-guide-heading">From showtime to your seat</h2></div>
-        <ol className="booking-steps">
-          <li><h3>Join the waiting room</h3><p>Sign in and join your show’s line. Keep the page open to keep your place.</p></li>
-          <li><h3>Choose your seat</h3><p>When your turn opens, you have up to two minutes to choose and confirm one seat.</p></li>
-          <li><h3>Find your ticket</h3><p>Your confirmation is saved in My bookings. This is a demo; no payment is collected.</p></li>
-        </ol>
-        <p className="field-help">A place in line or a selected seat is not a reservation. Your seat is yours once the booking is confirmed.</p>
-      </section>
-    </>
-  );
+      <div className="hero-poster"><MoviePoster title={hero.title} path={hero.posterPath} priority /></div>
+    </section>}
+    <section className="catalogue" aria-labelledby="movies-heading">
+      <div className="section-heading"><div><p className="eyebrow">PLAN YOUR MOVIE NIGHT</p><h2 id="movies-heading">Back on the big screen</h2></div><p>Curated films · Demo screenings</p></div>
+      {!movies.length ? <div className="notice"><h3>No films listed yet</h3><p>Check back for new showtimes.</p></div> :
+        <ul className="movie-grid">{movies.map((movie) => <li className="movie-card" key={movie.id}>
+          <Link className="poster-link" href={`/movies/${movie.id}`} aria-label={`Explore ${movie.title}`}><MoviePoster title={movie.title} path={movie.posterPath} /><span className="poster-badge">SPECIAL SCREENING</span></Link>
+          <div className="movie-card-copy"><p className="movie-meta">{movie.language} <span aria-hidden="true">/</span> {movie.durationMinutes} min</p><h3>{movie.title}</h3><p className="genre">{movie.genre ?? "Cinema"}</p>
+            <Link className="movie-action" href={`/movies/${movie.id}`} aria-label={`View showtimes for ${movie.title}`}>View showtimes <span aria-hidden="true">↗</span></Link>
+          </div>
+        </li>)}</ul>}
+    </section>
+    <section className="booking-guide" aria-labelledby="booking-guide-heading">
+      <div className="section-heading"><div><p className="eyebrow">LESS WAITING. MORE MOVIE.</p><h2 id="booking-guide-heading">Your movie night, in three steps.</h2></div></div>
+      <ol className="booking-steps">
+        <li><h3>Find your show</h3><p>Pick a film and click Book tickets for your preferred showtime.</p></li>
+        <li><h3>Make room for everyone</h3><p>Choose up to 6 seats together. If checkout is busy, we’ll keep your place in line.</p></li>
+        <li><h3>You’re all set</h3><p>One confirmation for your whole group, saved in My bookings.</p></li>
+      </ol>
+      <p className="field-help">A place in line or a seat selection is not a reservation. Your seats are yours once confirmed. No payment is collected.</p>
+    </section>
+  </>;
 }

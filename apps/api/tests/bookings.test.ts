@@ -22,8 +22,8 @@ const { requestLimitKey } = await import("../src/request-limits.js");
 test("durable, isolated seat booking across independent API processes", async (t) => {
   const runId = randomUUID();
   const movieId = `booking-test-${runId}`;
-  const showIds = ["main", "later", "past", "other"].map((label) => `${label}-${runId}`);
-  const [mainShow, laterShow, pastShow, otherShow] = showIds;
+  const showIds = ["main", "later", "past", "other", "group"].map((label) => `${label}-${runId}`);
+  const [mainShow, laterShow, pastShow, otherShow, groupShow] = showIds;
   const users = Array.from({ length: 31 }, (_, index) => ({
     id: randomUUID(), email: `booking-${index}-${runId}@fairgate.test`, token: randomBytes(32).toString("base64url"),
   }));
@@ -90,8 +90,8 @@ test("durable, isolated seat booking across independent API processes", async (t
       prisma.movie.create({ data: { id: movieId, title: "Booking test film", synopsis: "Synthetic test fixture", language: "English", durationMinutes: 100 } }),
       prisma.show.createMany({ data: showIds.map((id) => ({ id, movieId, cinemaName: "Test cinema", screenName: "Test screen",
         startsAt: id === pastShow ? new Date(Date.now() - 60000) : tomorrow, priceInPaise: 35000, currency: "INR" as const })) }),
-      prisma.showSeat.createMany({ data: showIds.flatMap((showId) => Array.from({ length: showId === mainShow ? 16 : 1 }, (_, index) => {
-        const number = showId === mainShow ? 16 - index : 1; const row = showId === otherShow ? "B" : "A";
+      prisma.showSeat.createMany({ data: showIds.flatMap((showId) => Array.from({ length: showId === mainShow || showId === groupShow ? 16 : 1 }, (_, index) => {
+        const number = showId === mainShow || showId === groupShow ? 16 - index : 1; const row = showId === otherShow ? "B" : "A";
         return { showId, label: `${row}${number}`, row, number };
       })) }),
       prisma.user.createMany({ data: users.map(({ id, email }) => ({ id, email, name: "Booking test customer", passwordHash })) }),
@@ -107,6 +107,14 @@ test("durable, isolated seat booking across independent API processes", async (t
       }
     }
 
+    t.beforeEach(async () => {
+      for (const customer of [0, 1]) {
+        await request(0, `/waiting-room/${mainShow}/leave`, users[customer].token, { method: "POST" });
+        const joined = await request(0, `/waiting-room/${mainShow}/join`, users[customer].token, { method: "POST" });
+        assert.equal(joined.body.waitingRoom.status, "admitted");
+      }
+    });
+
     await t.test("public show detail returns ordered availability and rejects an unknown show", async () => {
       const result = await request(0, `/shows/${mainShow}`);
       assert.equal(result.status, 200); assert.equal(result.body.show.movieTitle, "Booking test film");
@@ -119,7 +127,7 @@ test("durable, isolated seat booking across independent API processes", async (t
       const results = await Promise.all(users.slice(0, 2).map((_user, index) => book(index % 2, index, "A1")));
       assert.equal(results.filter((result) => result.status === 201).length, 1);
       for (const loser of results.filter((result) => result.status !== 201)) expectError(loser, 409, "SEAT_UNAVAILABLE");
-      assert.equal(await prisma.booking.count({ where: { showId: mainShow, seatLabel: "A1" } }), 1);
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: mainShow, seatLabel: "A1" } }), 1);
       const availability = await request(1, `/shows/${mainShow}`);
       assert.equal(availability.body.seats.find((seat: { label: string }) => seat.label === "A1").available, false);
     });
@@ -136,7 +144,7 @@ test("durable, isolated seat booking across independent API processes", async (t
       assert.deepEqual(results.map((result) => result.status).sort(), [201, 409]);
       expectError(results.find((result) => result.status === 409)!, 409, "REQUEST_ID_REUSED");
       assert.equal(await prisma.booking.count({ where: { userId: users[0].id, requestId: key } }), 1);
-      assert.equal(await prisma.booking.count({ where: { showId: mainShow, seatLabel: { in: ["A4", "A5"] } } }), 1);
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: mainShow, seatLabel: { in: ["A4", "A5"] } } }), 1);
     });
     await t.test("request IDs belong to each customer and successful retries survive show start", async () => {
       const key = randomUUID();
@@ -185,19 +193,108 @@ test("durable, isolated seat booking across independent API processes", async (t
       expectError(await book(0, 0, "Z99"), 404, "SEAT_NOT_FOUND");
       expectError(await book(0, 0, "A1", randomUUID(), `missing-${runId}`), 404, "SEAT_NOT_FOUND");
       expectError(await book(1, 0, "A1", randomUUID(), pastShow), 409, "SHOW_STARTED");
-      assert.equal(await prisma.booking.count({ where: { showId: mainShow, seatLabel: "A10" } }), 0);
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: mainShow, seatLabel: "A10" } }), 0);
     });
+    async function groupTurn(customer: number) {
+      await request(0, `/waiting-room/${groupShow}/leave`, users[customer].token, { method: "POST" });
+      const result = await request(0, `/waiting-room/${groupShow}/join`, users[customer].token, { method: "POST" });
+      assert.equal(result.body.waitingRoom.status, "admitted");
+      return result.body.waitingRoom.turnId as string;
+    }
+    function groupBook(customer: number, labels: string[], turnId: string, requestId = randomUUID(), server = customer % 2) {
+      return post(server, users[customer].token, { showId: groupShow, seatLabels: labels, turnId, requestId });
+    }
+    await t.test("multi-seat input rejects empty, duplicate, oversized, mixed, and malformed selections", async () => {
+      const valid = { showId: groupShow, requestId: randomUUID() };
+      for (const seatLabels of [[], ["A1", "A1"], ["a1"], [null], Array.from({ length: 7 }, (_, i) => `A${i + 1}`)]) {
+        expectError(await post(0, users[0].token, { ...valid, seatLabels }), 400, "INVALID_INPUT");
+      }
+      expectError(await post(0, users[0].token, { ...valid, seatLabels: ["A1"], seatLabel: "A1" }), 400, "INVALID_INPUT");
+    });
+    await t.test("overlapping group bookings through separate API processes reserve all seats or none and promote the next waiter", async () => {
+      const first = await groupTurn(0); const second = await groupTurn(1);
+      const waiting = await request(0, `/waiting-room/${groupShow}/join`, users[2].token, { method: "POST" });
+      assert.equal(waiting.body.waitingRoom.status, "waiting");
+      const results = await Promise.all([groupBook(0, ["A1", "A2"], first), groupBook(1, ["A2", "A3"], second)]);
+      assert.deepEqual(results.map((result) => result.status).sort(), [201, 409]);
+      const winner = results.findIndex((result) => result.status === 201);
+      expectError(results[1 - winner], 409, "SEAT_UNAVAILABLE");
+      assert.equal(results[winner].body.booking.seats.length, 2);
+      assert.equal(results[winner].body.booking.priceInPaise, 70000);
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: groupShow } }), 2);
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: groupShow, seatLabel: winner === 0 ? "A3" : "A1" } }), 0);
+      assert.equal((await request(0, `/waiting-room/${groupShow}`, users[winner].token)).body.waitingRoom.status, "not_joined");
+      assert.equal((await request(0, `/waiting-room/${groupShow}`, users[2].token)).body.waitingRoom.status, "admitted");
+      for (const customer of [0, 1, 2]) await request(0, `/waiting-room/${groupShow}/leave`, users[customer].token, { method: "POST" });
+    });
+    await t.test("two tabs cannot complete two different bookings in one checkout turn", async () => {
+      const turn = await groupTurn(0);
+      const results = await Promise.all([groupBook(0, ["A4"], turn, randomUUID(), 0), groupBook(0, ["A5"], turn, randomUUID(), 1)]);
+      assert.equal(results.filter((result) => result.status === 201).length, 1);
+      const loser = results.find((result) => result.status !== 201)!;
+      assert.ok(["TURN_USED", "ADMISSION_REQUIRED"].includes(loser.body.error.code));
+      assert.equal(await prisma.booking.count({ where: { turnId: turn } }), 1);
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: groupShow, seatLabel: { in: ["A4", "A5"] } } }), 1);
+    });
+    await t.test("group retries accept reordered seats and an old replay cannot release a newer turn", async () => {
+      const turn = await groupTurn(0); const key = randomUUID();
+      const results = await Promise.all([groupBook(0, ["A6", "A7"], turn, key, 0), groupBook(0, ["A7", "A6"], turn, key, 1)]);
+      assert.deepEqual(results.map((result) => result.status).sort(), [200, 201]);
+      assert.equal(results[0].body.booking.id, results[1].body.booking.id);
+      const next = await groupTurn(0); assert.notEqual(next, turn);
+      const replay = await groupBook(0, ["A6", "A7"], turn, key);
+      assert.equal(replay.status, 200);
+      assert.equal((await request(0, `/waiting-room/${groupShow}`, users[0].token)).body.waitingRoom.turnId, next);
+      expectError(await groupBook(0, ["A15"], turn), 403, "ADMISSION_REQUIRED");
+      expectError(await groupBook(0, ["A6", "A15"], next), 409, "SEAT_UNAVAILABLE");
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: groupShow, seatLabel: "A15" } }), 0);
+    });
+    await t.test("six seats share one reference, itemized prices, and a server-calculated total", async () => {
+      const turn = await groupTurn(0);
+      const result = await groupBook(0, ["A8", "A9", "A10", "A11", "A12", "A13"], turn);
+      assert.equal(result.status, 201);
+      assert.equal(result.body.booking.seatLabels.length, 6);
+      assert.equal(result.body.booking.priceInPaise, 210000);
+      assert.ok(result.body.booking.seats.every((seat: { priceInPaise: number }) => seat.priceInPaise === 35000));
+    });
+    await t.test("a durable release survives failure and worker retries never remove a newer checkout turn", async () => {
+      const { releaseBookingTurn, startReleaseWorker } = await import("../src/booking-release.js");
+      const { finishWaitingRoomTurn } = await import("../src/waiting-room.js");
+      const turn = await groupTurn(0);
+      const booking = await prisma.booking.create({ data: {
+        userId: users[0].id, showId: groupShow, requestId: randomUUID(), turnId: turn, priceInPaise: 35000,
+        seats: { create: { seatLabel: "A14", priceInPaise: 35000 } },
+        release: { create: { userId: users[0].id, showId: groupShow, turnId: turn, startsAt: new Date(Date.now() + 86400000) } },
+      } });
+      assert.equal(await releaseBookingTurn(booking.id, async () => { throw new Error("Simulated Redis outage"); }), false);
+      assert.equal((await prisma.bookingRelease.findUniqueOrThrow({ where: { bookingId: booking.id } })).attempts, 1);
+      assert.ok(await prisma.booking.findUnique({ where: { id: booking.id } }));
+      const next = await groupTurn(0); assert.notEqual(next, turn);
+      await prisma.bookingRelease.update({ where: { bookingId: booking.id }, data: { nextAttemptAt: new Date(0) } });
+      const stop = startReleaseWorker();
+      try {
+        const deadline = Date.now() + 8000;
+        while (await prisma.bookingRelease.count({ where: { bookingId: booking.id } })) {
+          assert.ok(Date.now() < deadline, "The worker must drain the persisted release job");
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      } finally { await stop(); }
+      assert.equal((await request(0, `/waiting-room/${groupShow}`, users[0].token)).body.waitingRoom.turnId, next);
+      await Promise.all([finishWaitingRoomTurn(users[0].id, groupShow, new Date(Date.now() + 86400000), true, next), finishWaitingRoomTurn(users[0].id, groupShow, new Date(Date.now() + 86400000), true, next)]);
+      assert.equal((await request(0, `/waiting-room/${groupShow}`, users[0].token)).body.waitingRoom.status, "not_joined");
+    });
+
     await t.test("database constraints independently reject duplicate ownership and invalid relationships", async () => {
-      const data = { userId: users[0].id, showId: mainShow, seatLabel: "A16", requestId: randomUUID(), priceInPaise: 35000, currency: "INR" as const };
-      await assert.rejects(prisma.booking.create({ data: { ...data, seatLabel: "A2" } }), { code: "P2002" });
+      const data = { userId: users[0].id, showId: mainShow, seats: { create: { seatLabel: "A16", priceInPaise: 35000 } }, requestId: randomUUID(), priceInPaise: 35000, currency: "INR" as const };
+      await assert.rejects(prisma.booking.create({ data: { ...data, seats: { create: { seatLabel: "A2", priceInPaise: 35000 } } } }), { code: "P2002" });
       await assert.rejects(prisma.booking.create({ data: { ...data, requestId: replayKey } }), { code: "P2002" });
-      await assert.rejects(prisma.booking.create({ data: { ...data, showId: otherShow, seatLabel: "A1" } }), { code: "P2003" });
+      await assert.rejects(prisma.booking.create({ data: { ...data, showId: otherShow, seats: { create: { seatLabel: "A1", priceInPaise: 35000 } } } }), { code: "P2003" });
       await assert.rejects(prisma.booking.create({ data: { ...data, userId: randomUUID() } }), { code: "P2003" });
       await assert.rejects(prisma.booking.create({ data: { ...data, priceInPaise: -1 } }));
       await assert.rejects(prisma.user.delete({ where: { id: users[0].id } }), { code: "P2003" });
       await assert.rejects(prisma.showSeat.create({ data: { showId: mainShow, label: "A1", row: "A", number: 1 } }), { code: "P2002" });
       await assert.rejects(prisma.showSeat.create({ data: { showId: mainShow, label: "A98", row: "A", number: 99 } }));
-      assert.equal(await prisma.booking.count({ where: { showId: mainShow, seatLabel: "A16" } }), 0);
+      assert.equal(await prisma.bookingSeat.count({ where: { showId: mainShow, seatLabel: "A16" } }), 0);
     });
   } finally {
     await Promise.allSettled(children.map(stopServer));

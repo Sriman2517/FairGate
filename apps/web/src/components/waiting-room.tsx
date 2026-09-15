@@ -9,8 +9,8 @@ import { turnSecondsRemaining, waitingRoomView } from "../lib/waiting-room-view"
 import { BookingForm } from "./booking-form";
 import { useRetryDelay } from "./use-retry-delay";
 
-export function WaitingRoom({ showId, movieId, seats, price, initialRequestId, initialResult }: {
-  showId: string; movieId: string; seats: Seat[]; price: string; initialRequestId: string; initialResult: WaitingRoomResult;
+export function WaitingRoom({ showId, movieId, seats, priceInPaise, initialRequestId, initialResult }: {
+  showId: string; movieId: string; seats: Seat[]; priceInPaise: number; initialRequestId: string; initialResult: WaitingRoomResult;
 }) {
   const [result, action, pending] = useActionState(visitWaitingRoom, initialResult);
   const retryDelay = useRetryDelay(result);
@@ -24,8 +24,8 @@ export function WaitingRoom({ showId, movieId, seats, price, initialRequestId, i
   const canJoin = view === "not_joined" || view === "expired";
   const heading = {
     admitted: "It’s your turn",
-    waiting: "You’re in line",
-    not_joined: "Ready to join?",
+    waiting: "Please wait for your turn",
+    not_joined: "Your seats are one step away",
     expired: "Your checkout turn has ended",
     closed: "Booking is closed",
     sign_in: "Sign in to continue",
@@ -65,31 +65,31 @@ export function WaitingRoom({ showId, movieId, seats, price, initialRequestId, i
           <p className="field-help">If this page cannot check in for a minute, your place expires. A turn does not guarantee a seat.</p>
         </>}
         {admitted && <>
-          <p>Choose a seat and confirm before your turn ends. Your turn does not hold a seat.</p>
-          <p className="turn-countdown">Time remaining: <strong role="timer" aria-live="off">{Math.floor(remaining! / 60)}:{String(remaining! % 60).padStart(2, "0")}</strong></p>
-          {remaining! <= 30 && <p role="status">30 seconds or less left. Your checkout turn ends soon.</p>}
+          <p>You have up to 2 minutes to choose your seats and confirm. We’ll let you know when time is running low.</p>
+          <details className="turn-details"><summary>Time left</summary><p className="turn-countdown"><strong role="timer" aria-live="off">{Math.floor(remaining! / 60)}:{String(remaining! % 60).padStart(2, "0")}</strong></p></details>
+          {remaining! <= 30 && <p className="time-warning" role="status">Please confirm soon — less than 30 seconds remain before your checkout turn expires.</p>}
         </>}
         {canJoin && <p>{view === "expired"
-          ? "Seat selection is now closed. Rejoin to get another turn at the back of the line. If you just confirmed a seat, check My bookings first."
-          : "Join to get a checkout turn. If your previous turn or waiting place expired, you’ll rejoin at the back of the line."}</p>}
+          ? "Your checkout turn expired. Check My bookings if you just confirmed; otherwise book tickets to get another turn."
+          : "Choose Book tickets to continue. If checkout is busy, we’ll save your place in line automatically."}</p>}
         {result.signInRequired ? <Link className="button" href={`/login?returnTo=${encodeURIComponent(`/shows/${showId}`)}`}>Sign in again</Link>
           : !result.closed && <form action={action} className="queue-controls">
             <input type="hidden" name="showId" value={showId} />
-            <button className="button" name="operation" value={canJoin ? "join" : "status"} disabled={pending || retryDelay > 0}>
-              {pending ? "Updating…" : retryDelay > 0 ? "Please wait" : view === "expired" ? "Rejoin waiting room" : canJoin ? "Join waiting room" : "Check my turn"}
+            <button className={`button ${!canJoin && view !== "unavailable" ? "manual-refresh" : ""}`} name="operation" value={canJoin ? "join" : "status"} disabled={pending || retryDelay > 0}>
+              {pending ? "Updating…" : retryDelay > 0 ? "Please wait" : view === "expired" ? "Book tickets again" : canJoin ? "Book tickets" : "Check my turn"}
             </button>
             {(view === "waiting" || admitted) && <button className="button button-secondary" name="operation" value="leave" disabled={pending || retryDelay > 0}>
-              {admitted ? "Give up my turn" : "Leave waiting room"}
+              {admitted ? "Leave checkout" : "Leave waiting room"}
             </button>}
           </form>}
         {(view === "waiting" || admitted) && <p>If you leave, rejoining puts you at the back of the line. Leaving does not cancel a booking.</p>}
         {view === "unavailable" && <p>Seat selection is paused until we can check your turn. We’ll try again automatically while this page stays open.</p>}
         {result.closed && <p><Link className="button" href={`/movies/${encodeURIComponent(movieId)}`}>Choose another showtime</Link></p>}
-        <noscript><p>Use “Check my turn” every few seconds to keep your place. After a request-limit pause, wait the displayed time and reload this page.</p></noscript>
+        <noscript><style>{`.manual-refresh { display: inline-flex !important; }`}</style><p>Use “Check my turn” every few seconds to keep your place. After a request-limit pause, wait the displayed time and reload this page.</p></noscript>
       </section>
       {/* Stay mounted so an uncertain booking retry retains its request ID. */}
-      <div hidden={!admitted}>
-        <BookingForm showId={showId} seats={seats} price={price} initialRequestId={initialRequestId} enabled={admitted} />
+      <div>
+        <BookingForm showId={showId} seats={seats} priceInPaise={priceInPaise} turnId={room?.turnId ?? null} initialRequestId={initialRequestId} enabled={admitted} />
       </div>
       {!admitted && <>
         <div className="seat-map-scroll" role="region" aria-label="Seat availability preview. Scroll horizontally if needed." tabIndex={0}>

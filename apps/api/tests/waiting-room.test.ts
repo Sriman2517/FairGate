@@ -115,7 +115,7 @@ test("shared FIFO waiting room and enforced checkout admission", async (t) => {
       const copies = await Promise.all([room(0, orderShow, true, 0), room(0, orderShow, true, 1), room(0)]);
       for (const copy of copies) assert.equal(copy.body.waitingRoom.expiresAt, original.expiresAt);
       assert.equal(await redis.zCard(waitingRoomKeys(orderShow)[1]), 1);
-      assert.deepEqual(Object.keys(original).sort(), ["expiresAt", "pollAfterMs", "position", "serverTime", "status"]);
+      assert.deepEqual(Object.keys(original).sort(), ["expiresAt", "pollAfterMs", "position", "serverTime", "status", "turnId"]);
       assert.equal((await room(1, orderShow, true)).body.waitingRoom.status, "admitted");
     });
     await t.test("sequential waiters keep FIFO position across processes and duplicate joins", async () => {
@@ -182,8 +182,8 @@ test("shared FIFO waiting room and enforced checkout admission", async (t) => {
       const requestId = randomUUID();
       const created = await book(0, bookingShow, requestId);
       assert.equal(created.status, 201);
-      // Success does not free or extend the checkout window in this phase.
-      assert.equal(await redis.zCard(waitingRoomKeys(bookingShow)[1]), 1);
+      // Confirmation releases the turn immediately; replays still succeed.
+      assert.equal(await redis.zCard(waitingRoomKeys(bookingShow)[1]), 0);
       await redis.zAdd(waitingRoomKeys(bookingShow)[1], { score: 0, value: users[0].id });
       assert.equal((await book(0, bookingShow, requestId)).body.booking.id, created.body.booking.id);
       error(await book(0, bookingShow, randomUUID(), 0, { seatLabel: "A2" }), 403, "ADMISSION_REQUIRED");

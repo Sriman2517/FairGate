@@ -6,9 +6,11 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 15: deployment readiness.**
+**Phase 16: movie booking experience.**
 
-The API accepts deployment HOST/PORT settings, exposes `/ready` for PostgreSQL/Redis checks, and drains active requests on shutdown. Shared Redis budgets now protect login and registration across API replicas. Production website calls require an explicit API origin. This phase prepares deployment; it does not publish the app.
+Real films and poster cards now lead into Book tickets, automatic queue entry, and group bookings of 1–6 seats. A confirmed group has one reference, an itemized total, and immediate checkout-turn release. A durable outbox retries failed releases without removing a newer turn. Time left is collapsed by default, with a warning at 30 seconds.
+
+The API accepts deployment HOST/PORT settings, exposes `/ready` for PostgreSQL/Redis checks, and drains active requests on shutdown. Shared Redis budgets now protect login and registration across API replicas. Production website calls require an explicit API origin. Those Phase 15 runtime features remain; deployment is a separate future phase.
 
 The homepage explains the three booking steps. Page navigation has a loading fallback; waiting, admission, expiry, and unavailable checks have distinct messages. Seat maps keep eight columns with touch-sized controls and horizontal scrolling on narrow screens. Closed shows offer a direct link to other showtimes. See the Phase 14 guide for the browser review checklist.
 
@@ -26,9 +28,9 @@ Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new boo
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 15 learning guide](docs/phase-15-deployment-readiness.md). Earlier guides cover [frontend polish](docs/phase-14-frontend-polish.md), [request tracing](docs/phase-13-request-tracing.md), [automated checks](docs/phase-12-automated-checks.md), [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 16 learning guide](docs/phase-16-movie-booking-experience.md) and [movie artwork credits](docs/movie-artwork.md). Earlier guides cover [deployment readiness](docs/phase-15-deployment-readiness.md), [frontend polish](docs/phase-14-frontend-polish.md), [request tracing](docs/phase-13-request-tracing.md), [automated checks](docs/phase-12-automated-checks.md), [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
-Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Multi-seat bookings, temporary holds, cancellation, bot defenses, and production load testing remain future work.
+Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
 ## First-time setup
 
@@ -55,7 +57,7 @@ npm run db:deploy
 npm run db:seed
 ```
 
-`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 added the Redis client and local Redis service. Phase 9 adds the operator-role migration: run `npm run db:deploy` and `npm run db:generate` before restarting the API. Phase 10 adds local scripts only. Phase 11 adds leave controls with no dependency, migration, or seed changes; restart both development servers to use it.
+`db:deploy` applies the checked-in migrations. `db:seed` inserts missing demo movies, shows, and seats without changing existing rows or bookings. Neither resets the database. For Phase 16, stop the old API/web processes, run deploy, generate, and seed, then restart them. The booking migration backfills existing tickets before removing the old single-seat column. If you completed Phase 6, run `npm install` and `npm run db:start`, then restart both development servers. Phase 7 added the Redis client and local Redis service. Phase 9 adds the operator-role migration: run `npm run db:deploy` and `npm run db:generate` before restarting the API. Phase 10 adds local scripts only. Phase 11 adds leave controls with no dependency, migration, or seed changes; restart both development servers to use it.
 
 ## Everyday development
 
@@ -71,13 +73,13 @@ npm run dev:api
 npm run dev:web
 ```
 
-Open `http://127.0.0.1:3000`, choose a film and show, then open its seat map. Sign in or create an account when prompted; you will return to that show. Join the waiting room. When your turn opens, choose an available seat and confirm its demo booking. The confirmation shows the seat, booking reference, showtime, and amount. Open **My bookings** to find it again. Prices are recorded at booking time; no payment is collected.
+Open `http://127.0.0.1:3000`, choose a film and show, then open its seat map. Sign in or create an account when prompted; you will return to that show. Book tickets joins the waiting room automatically, including after sign-in. When your turn opens, choose up to six seats and confirm. The confirmation shows every seat, one booking reference, the showtime, and the total. Open **My bookings** to find it again. Prices are recorded at booking time; no payment is collected.
 
 Accounts use a demo email and a unique passphrase of 15–128 characters. Email is not sent or verified. Next.js keeps the session token in an HttpOnly cookie; the API stores its digest in PostgreSQL and checks its seven-day expiry.
 
 The API and PostgreSQL must be available for catalogue and account requests. Redis is also required for new login/registration, the waiting room, and new bookings. Existing session reads and logout remain independent of Redis. It runs at `127.0.0.1:6380`; the API uses that default or an optional `REDIS_URL` override. The website uses API address `http://127.0.0.1:4000` by default. To change it, copy `apps/web/.env.example` to `apps/web/.env.local`, edit `FAIRGATE_API_URL`, and restart Next.js.
 
-Use the development commands for local HTTP testing. Production mode sets a `Secure` session cookie and requires HTTPS at the browser. Deployments must also protect the connection to the API. Phase 15 validates runtime configuration; HTTPS hosting and live deployment are planned for Phase 16. See its guide before running production start commands. The website requires FAIRGATE_API_URL in production; private HTTP requires an explicit FAIRGATE_ALLOW_HTTP_API=true opt-in.
+Use the development commands for local HTTP testing. Production mode sets a `Secure` session cookie and requires HTTPS at the browser. Deployments must also protect the connection to the API. Phase 15 validates runtime configuration; HTTPS hosting and live deployment remain future work. See the Phase 15 guide before running production start commands. The website requires FAIRGATE_API_URL in production; private HTTP requires an explicit FAIRGATE_ALLOW_HTTP_API=true opt-in.
 
 ## Commands
 

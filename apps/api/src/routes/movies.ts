@@ -5,7 +5,7 @@ export const moviesRouter = Router();
 
 moviesRouter.get("/", async (_request, response) => {
   const movies = await prisma.movie.findMany({
-    orderBy: [{ title: "asc" }, { id: "asc" }],
+    orderBy: [{ featured: "desc" }, { title: "asc" }, { id: "asc" }],
   });
   response.status(200).json({ movies });
 });

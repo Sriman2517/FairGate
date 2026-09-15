@@ -4,6 +4,7 @@ export interface WaitingRoomState {
   expiresAt: string | null;
   serverTime: string;
   pollAfterMs: number;
+  turnId?: string | null;
 }
 
 export interface WaitingRoomResult {

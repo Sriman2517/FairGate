@@ -113,14 +113,14 @@ test("operator snapshots and authorization", async (t) => {
     await t.test("seat counts reflect a real booking and queue counts are shared without exposing customers", async () => {
       for (const user of [1, 2, 3]) assert.equal((await request(`/waiting-room/${mainShow}/join`, user, user % 2, { method: "POST" })).status, 200);
       const booking = await request("/bookings", 1, 0, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ showId: mainShow, seatLabel: "A1", requestId: randomUUID() }) });
+        body: JSON.stringify({ showId: mainShow, seatLabels: ["A1", "A2"], requestId: randomUUID() }) });
       assert.equal(booking.status, 201);
       for (const server of [0, 1]) {
         const result = await request("/operations/shows", 0, server);
         assert.equal(result.status, 200); assert.equal(result.body.queueStatus, "available");
         assert.ok(Number.isFinite(Date.parse(result.body.queueObservedAt)));
         const show = result.body.shows.find((show: { id: string }) => show.id === mainShow);
-        assert.deepEqual([show.totalSeats, show.bookedSeats, show.availableSeats, show.waitingCustomers, show.activeTurns, show.checkoutCapacity], [4, 1, 3, 1, 2, 2]);
+        assert.deepEqual([show.totalSeats, show.bookedSeats, show.availableSeats, show.waitingCustomers, show.activeTurns, show.checkoutCapacity], [4, 2, 2, 0, 2, 2]);
         const empty = result.body.shows.find((show: { id: string }) => show.id === otherShow);
         assert.deepEqual([empty.bookedSeats, empty.waitingCustomers, empty.activeTurns], [0, 0, 0]);
         assert.ok(!result.body.shows.some((show: { id: string }) => show.id === pastShow));
@@ -131,7 +131,7 @@ test("operator snapshots and authorization", async (t) => {
     });
     await t.test("refresh excludes expired members without pruning, promoting, renewing, or spending customer budget", async () => {
       const [waiting, active, leases, sequence] = waitingRoomKeys(mainShow);
-      await redis.zAdd(active, { value: users[1].id, score: 0 });
+      await redis.zAdd(active, { value: users[2].id, score: 0 });
       await redis.zAdd(waiting, { value: "expired-fixture-waiter", score: 999 });
       await redis.zAdd(leases, { value: "expired-fixture-waiter", score: 0 });
       const state = async () => ({
@@ -143,7 +143,7 @@ test("operator snapshots and authorization", async (t) => {
       for (let i = 0; i < 3; i++) {
         const result = await request("/operations/shows", 0, i % 2);
         const show = result.body.shows.find((show: { id: string }) => show.id === mainShow);
-        assert.deepEqual([show.waitingCustomers, show.activeTurns], [1, 1]);
+        assert.deepEqual([show.waitingCustomers, show.activeTurns], [0, 1]);
       }
       assert.deepEqual(await state(), before);
       assert.equal(await redis.exists(requestLimitKey(users[0].id, "waiting-room")), 0);
@@ -157,7 +157,7 @@ test("operator snapshots and authorization", async (t) => {
       assert.equal(result.status, 200); assert.equal(result.body.queueStatus, "unavailable");
       assert.equal(result.body.queueObservedAt, null);
       const show = result.body.shows.find((show: { id: string }) => show.id === mainShow);
-      assert.deepEqual([show.totalSeats, show.bookedSeats, show.availableSeats, show.waitingCustomers, show.activeTurns], [4, 1, 3, null, null]);
+      assert.deepEqual([show.totalSeats, show.bookedSeats, show.availableSeats, show.waitingCustomers, show.activeTurns], [4, 2, 2, null, null]);
     });
     await t.test("the snapshot is bounded to the next 50 shows in deterministic time order", async () => {
       const extra = Array.from({ length: 51 }, (_, i) => `ops-limit-${runId}-${String(i).padStart(2, "0")}`);
