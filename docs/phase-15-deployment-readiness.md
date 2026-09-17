@@ -1,5 +1,7 @@
 # Phase 15: deployment readiness
 
+> Roadmap update: Phase 16 became the movie/group-booking experience. Deployment setup now lives in [Phase 17](phase-17-free-deployment.md); references below to the originally planned Phase 16 deployment describe the old roadmap.
+
 ## Outcome
 
 FairGate can take a hosting platform's port and bind address, distinguish process health from dependency readiness, and finish active API requests during a normal shutdown. Authentication budgets now live in Redis instead of process memory. All Next.js API calls share one server-only helper that validates the deployment origin.

@@ -10,6 +10,8 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "test:deployment": "node scripts/test-deployment.mjs",
+    "deploy:check": "node scripts/check-deployment.mjs",
     "test:runtime": "npm run test:runtime --workspace @fairgate/api",
     "test:ui": "npm run test:ui --workspace @fairgate/web",
     "dev": "npm run dev:api",

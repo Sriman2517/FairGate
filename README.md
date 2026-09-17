@@ -6,7 +6,9 @@ FairGate will admit customers to a cinema checkout at a controlled pace, while t
 
 ## Current phase
 
-**Phase 16: movie booking experience.**
+**Phase 17: free deployment setup.**
+
+Deployment files are ready for a Vercel Hobby website, Render Free API, Neon Free PostgreSQL, and Upstash Free Redis. The API has a Linux Docker image, an explicit migration-tools target, a free Render Blueprint, and repeatable deployment checks. Public hosting and HTTPS browser verification are pending account setup and your review/commit; FairGate is not yet claimed live.
 
 Real films and poster cards now lead into Book tickets, automatic queue entry, and group bookings of 1–6 seats. A confirmed group has one reference, an itemized total, and immediate checkout-turn release. A durable outbox retries failed releases without removing a newer turn. Time left is collapsed by default, with a warning at 30 seconds.
 
@@ -28,7 +30,7 @@ Redis enforces a shared rolling limit of 60 waiting-room requests and 20 new boo
 
 Customers join a show's waiting room and receive a timed checkout turn before choosing a seat. Redis shares FIFO order and admission across API processes; each show admits up to two customers for two minutes. Waiting pages check in every five seconds, and inactive waiting places expire after one minute. PostgreSQL prevents two bookings for the same seat even across separate API processes. Retrying the same request returns the existing booking. Customers can view only their own booking list and confirmation pages. Each demo show has 32 seats arranged in four rows of eight.
 
-Start with the [Phase 16 learning guide](docs/phase-16-movie-booking-experience.md) and [movie artwork credits](docs/movie-artwork.md). Earlier guides cover [deployment readiness](docs/phase-15-deployment-readiness.md), [frontend polish](docs/phase-14-frontend-polish.md), [request tracing](docs/phase-13-request-tracing.md), [automated checks](docs/phase-12-automated-checks.md), [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
+Start with the [Phase 17 free deployment guide](docs/phase-17-free-deployment.md). The [Phase 16 guide](docs/phase-16-movie-booking-experience.md) covers group bookings and [movie artwork credits](docs/movie-artwork.md). Earlier guides cover [deployment readiness](docs/phase-15-deployment-readiness.md), [frontend polish](docs/phase-14-frontend-polish.md), [request tracing](docs/phase-13-request-tracing.md), [automated checks](docs/phase-12-automated-checks.md), [leaving the waiting room](docs/phase-11-leave-waiting-room.md), [local traffic simulation](docs/phase-10-local-traffic-simulation.md), [the operator dashboard](docs/phase-09-operator-dashboard.md), [shared request limits](docs/phase-08-shared-request-limits.md), [the shared waiting room](docs/phase-07-shared-waiting-room.md), [safe seat booking](docs/phase-06-safe-seat-booking.md), [customer accounts](docs/phase-05-customer-accounts.md), the [PostgreSQL catalogue](docs/phase-04-postgresql-catalogue.md), [Next.js pages](docs/phase-03-nextjs-pages.md), the [in-memory catalogue](docs/phase-02-movie-catalogue.md), and the [API foundation](docs/phase-01-api-foundation.md). Use the current setup below when following an older guide.
 
 Bookings confirm immediately and collect no payment. A checkout turn does not reserve a seat. Temporary holds, cancellation, bot defenses, and production load testing remain future work.
 
@@ -85,6 +87,8 @@ Use the development commands for local HTTP testing. Production mode sets a `Sec
 
 | Command | Purpose |
 | --- | --- |
+| `npm run test:deployment` | Build and test the Linux API image using uniquely named disposable Docker dependencies. |
+| `npm run deploy:check -- --api https://API-HOST --web https://WEB-HOST` | Read-only checks for readiness, catalogue, website, sign-in form, and posters. |
 | `npm run dev:api` / `npm run dev:web` | Run the API / website in development. |
 | `npm run dev` | Shortcut for the API only. |
 | `npm run check` | Run type checks, all test suites, and the production build; stop on failure. Services and migrations must be ready. |

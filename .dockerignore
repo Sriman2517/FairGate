@@ -1,0 +1,21 @@
+# Only build inputs enter the Docker context. In particular, no local secrets,
+# Windows node_modules, Git history, reports, or database files are uploaded.
+**
+!package.json
+!package-lock.json
+!apps/
+!apps/api/
+!apps/api/package.json
+!apps/api/tsconfig.json
+!apps/api/prisma.config.ts
+!apps/api/src/
+!apps/api/src/**
+!apps/api/prisma/
+!apps/api/prisma/**
+!apps/api/Dockerfile
+!apps/web/
+!apps/web/package.json
+apps/api/src/generated/
+**/.env
+**/.env.*
+**/*.log

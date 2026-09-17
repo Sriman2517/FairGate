@@ -1,0 +1,22 @@
+# Import as a Blueprint after preparing the external database and Redis service.
+# This creates only one Free API service, with no paid datastore or disk.
+services:
+  - type: web
+    name: fairgate-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: AUTH_LIMIT_NAMESPACE
+        value: fairgate-demo
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
