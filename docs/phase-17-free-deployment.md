@@ -82,9 +82,26 @@ docker run --rm --env-file .env.deploy fairgate-api-tools:deploy npm run db:depl
 docker run --rm --env-file .env.deploy fairgate-api-tools:deploy npm run db:seed
 ```
 
-These commands **write to the database specified by `.env.deploy`**. Verify that it is the intended new FairGate deployment database before running them. Migrate once before serving the matching release; seed explicitly for the initial demo. The seed inserts missing movies and seats without importing local users or tickets. `DIRECT_DATABASE_URL` affects the migration CLI; the seed uses the application's `DATABASE_URL`.
+These commands **write to the database specified by `.env.deploy`**. Verify that it is the intended new FairGate deployment database before running them. Migrate once before serving the matching release; seed explicitly for the initial demo. The seed inserts missing movies and seats without importing local users or tickets. Both migrations and the seed prefer `DIRECT_DATABASE_URL`, falling back to `DATABASE_URL` for local development. The running API continues to use `DATABASE_URL`.
 
 Render's free service does not provide the paid pre-deploy-command feature. This is why migrations are an explicit one-off step instead of being hidden in the image's startup command. Never run reset or development migrations against the deployed database.
+
+### If the seed reports P2028
+
+Successful migrations confirm that the migration connection works, but do not prove that the application's pooled connection works. The original seed shared the API's three-second connection deadline and Prisma's default two-second transaction-start limit. A slow initial connection could exhaust that deadline; the error alone does not establish a provider outage or missing migration.
+
+The seed now has its own one-connection client. It uses the same direct URL as migrations, runs `SELECT 1` before starting the transaction, allows 15 seconds to connect, 20 seconds to acquire the transaction, and 60 seconds for the transaction to finish. Individual statements still have a 15-second limit. The API's request deadlines stay unchanged. Inserts remain one atomic transaction; reruns preserve existing rows and bookings.
+
+After changing the seed code, **rebuild the tools image**; running an old image keeps the old code:
+
+```sh
+docker build -f apps/api/Dockerfile --target tools -t fairgate-api-tools:deploy .
+docker run --rm --env-file .env.deploy fairgate-api-tools:deploy npm run db:seed
+```
+
+No reset or repeated schema migration is required when `db:deploy` already reports no pending migrations. If the new seed still fails, inspect the error and check the direct connection settings and database availability instead of repeatedly increasing deadlines. Keep credentials out of chat.
+
+Learning check: explain how the connection deadline, transaction-start deadline (`maxWait`), and transaction execution deadline (`timeout`) differ. Why can a one-off seed wait longer than an HTTP booking request?
 
 ## 4. Deploy the API on Render
 

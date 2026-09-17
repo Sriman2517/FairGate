@@ -96,6 +96,15 @@ try {
   const conflict = await request("/bookings", users[1], { ...input, seatLabels: ["A2", "A3"], requestId: randomUUID(), turnId: turns[1].turnId });
   assert.equal(conflict.status, 409); assert.equal(conflict.data.error.code, "SEAT_UNAVAILABLE");
   assert.ok((await request(`/shows/${showId}`)).data.seats.find((seat) => seat.label === "A3").available);
+  // The initial seed exercised DATABASE_URL fallback. Now prove that the seed
+  // prefers the migration URL and preserves an existing booking on a repeat run.
+  await command(["run", "--rm", "--network", network, ...env,
+    "-e", "DATABASE_URL=postgresql://unused:unused@127.0.0.1:1/unused",
+    "-e", `DIRECT_DATABASE_URL=postgresql://fairgate:${password}@${names.db}:5432/fairgate`,
+    tools, "npm", "run", "db:seed"]);
+  const reseededSeats = (await request(`/shows/${showId}`)).data.seats;
+  assert.equal(reseededSeats.length, 32);
+  for (const label of ["A1", "A2"]) assert.equal(reseededSeats.find((seat) => seat.label === label).available, false);
   await command(["restart", "--time", "15", names.api]);
   // Docker may assign a new ephemeral host port when a container restarts.
   const restartedBinding = await command(["port", names.api, "8080/tcp"]);
@@ -106,7 +115,7 @@ try {
   assert.equal(replay.status, 200); assert.equal(replay.data.booking.id, booked.data.booking.id);
   await command(["stop", "--time", "15", names.api]);
   assert.ok((await command(["logs", names.api])).includes('"event":"server_stopped","clean":true'));
-  console.log("PASS Linux runtime, non-root user, no development tools, migrations and seed, native password hashing, runtime PORT, group atomicity, queue handoff, durable retry after restart, and SIGTERM shutdown.");
+  console.log("PASS Linux runtime, non-root user, no development tools, migrations and seed, direct-URL reseeding preserves bookings, native password hashing, runtime PORT, group atomicity, queue handoff, durable retry after restart, and SIGTERM shutdown.");
 } catch (error) {
   if (owned.includes(names.api)) console.error(await command(["logs", "--tail", "20", names.api]).catch(() => "API logs unavailable."));
   throw error;
